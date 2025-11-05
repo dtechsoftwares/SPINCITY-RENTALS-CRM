@@ -1,9 +1,8 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { InventoryItem, User, Vendor, InventoryItemTypes, InventoryConditions, InventoryStatuses, InventoryItemType, InventoryCondition, InventoryStatus } from '../types';
 import { CloseIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
+import AdminKeyConfirmationModal from './AdminKeyConfirmationModal';
 
 const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode, title: string }) => {
   if (!isOpen) return null;
@@ -64,14 +63,18 @@ interface InventoryProps {
     currentUser: User;
     onCreateItem: (item: Omit<InventoryItem, 'id'>) => void;
     onUpdateItem: (item: InventoryItem) => void;
-    onDeleteItem: (itemId: number) => void;
+    // FIX: Changed ID type from number to string
+    onDeleteItem: (itemId: string) => void;
     showNotification: (message: string) => void;
+    adminKey: string;
 }
 
-const Inventory: React.FC<InventoryProps> = ({ inventory, vendors, currentUser, onCreateItem, onUpdateItem, onDeleteItem, showNotification }) => {
+const Inventory: React.FC<InventoryProps> = ({ inventory, vendors, currentUser, onCreateItem, onUpdateItem, onDeleteItem, showNotification, adminKey }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [formData, setFormData] = useState<Omit<InventoryItem, 'id'>>(emptyItemForm);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [itemToDelete, setItemToDelete] = useState<string | null>(null);
     const isAdmin = currentUser.role === 'Admin';
 
     useEffect(() => {
@@ -117,10 +120,18 @@ const Inventory: React.FC<InventoryProps> = ({ inventory, vendors, currentUser, 
         handleCloseModal();
     };
 
-    const handleDelete = (itemId: number) => {
-        if (window.confirm('Are you sure you want to delete this inventory item?')) {
-            onDeleteItem(itemId);
+    const handleDeleteRequest = (itemId: string) => {
+        setItemToDelete(itemId);
+        setIsConfirmModalOpen(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (itemToDelete) {
+            onDeleteItem(itemToDelete);
+            showNotification('Inventory item deleted successfully.');
         }
+        setIsConfirmModalOpen(false);
+        setItemToDelete(null);
     };
     
     const getStatusColor = (status: InventoryStatus) => ({
@@ -167,7 +178,7 @@ const Inventory: React.FC<InventoryProps> = ({ inventory, vendors, currentUser, 
                                 <td className="p-4 text-gray-500">
                                     <div className="flex space-x-4">
                                         <button onClick={() => handleOpenModal(item)} className="hover:text-brand-green">Edit</button>
-                                        {isAdmin && <button onClick={() => handleDelete(item.id)} className="text-red-500 hover:text-red-400">Delete</button>}
+                                        {isAdmin && <button onClick={() => handleDeleteRequest(item.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                                     </div>
                                 </td>
                             </tr>
@@ -212,6 +223,16 @@ const Inventory: React.FC<InventoryProps> = ({ inventory, vendors, currentUser, 
                     </div>
                 </div>
             </Modal>
+
+            <AdminKeyConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                onConfirm={handleDeleteConfirm}
+                title="Delete Inventory Item"
+                message="Are you sure you want to permanently delete this inventory item?"
+                adminKey={adminKey}
+                showNotification={showNotification}
+            />
         </div>
     );
 };

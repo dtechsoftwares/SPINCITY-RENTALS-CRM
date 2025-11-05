@@ -1,8 +1,7 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { CloseIcon } from './Icons';
+import AdminKeyConfirmationModal from './AdminKeyConfirmationModal';
 
 // Modal component
 // FIX: Made `children` optional to resolve misleading "missing children" type error.
@@ -68,15 +67,19 @@ interface UsersProps {
     currentUser: User;
     onCreateUser: (user: Omit<User, 'id'>) => void;
     onUpdateUser: (user: User) => void;
-    onDeleteUser: (userId: number) => void;
+    // FIX: Changed userId type to string to match User.id
+    onDeleteUser: (userId: string) => void;
     showNotification: (message: string) => void;
+    adminKey: string;
 }
 
-const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdateUser, onDeleteUser, showNotification }) => {
+const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdateUser, onDeleteUser, showNotification, adminKey }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [formData, setFormData] = useState<Partial<User>>({});
     const [viewingUser, setViewingUser] = useState<User | null>(null);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [userToDelete, setUserToDelete] = useState<string | null>(null);
     const isAdmin = currentUser.role === 'Admin';
 
     useEffect(() => {
@@ -153,10 +156,18 @@ const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdat
         handleCloseModal();
     };
 
-    const handleDelete = (userId: number) => {
-        if (window.confirm('Are you sure you want to delete this user?')) {
-            onDeleteUser(userId);
+    const handleDeleteRequest = (userId: string) => {
+      setUserToDelete(userId);
+      setIsConfirmModalOpen(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (userToDelete) {
+            onDeleteUser(userToDelete);
+            showNotification('User deleted successfully.');
         }
+        setIsConfirmModalOpen(false);
+        setUserToDelete(null);
     };
     
   return (
@@ -202,7 +213,7 @@ const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdat
                         <>
                             <button onClick={() => openModalForEdit(user)} className="hover:text-brand-green">Edit</button>
                             {user.id !== currentUser.id && (
-                               <button onClick={() => handleDelete(user.id)} className="text-red-500 hover:text-red-400">Delete</button>
+                               <button onClick={() => handleDeleteRequest(user.id)} className="text-red-500 hover:text-red-400">Delete</button>
                             )}
                         </>
                     )}
@@ -260,6 +271,16 @@ const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdat
        </Modal>
        
        <UserDetailsModal user={viewingUser} onClose={handleCloseViewModal} />
+
+       <AdminKeyConfirmationModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete User"
+        message="Are you sure you want to permanently delete this user?"
+        adminKey={adminKey}
+        showNotification={showNotification}
+      />
     </div>
   );
 };

@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Sale, User, InventoryItem } from '../types';
 import { CloseIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
+import AdminKeyConfirmationModal from './AdminKeyConfirmationModal';
 
 const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode, title: string }) => {
   if (!isOpen) return null;
@@ -48,7 +48,8 @@ const Textarea = ({ label, name, value, onChange, placeholder, rows=4 }: { label
 const emptySaleForm: Omit<Sale, 'id'> = {
     saleId: '',
     saleDate: getTodayDateString(),
-    itemId: 0,
+    // FIX: Changed itemId to empty string to match type
+    itemId: '',
     salePrice: 0,
     buyerName: '',
     buyerContact: '',
@@ -64,14 +65,18 @@ interface SalesLogProps {
     currentUser: User;
     onCreateSale: (sale: Omit<Sale, 'id'>) => void;
     onUpdateSale: (sale: Sale) => void;
-    onDeleteSale: (saleId: number) => void;
+    // FIX: Changed ID type from number to string
+    onDeleteSale: (saleId: string) => void;
     showNotification: (message: string) => void;
+    adminKey: string;
 }
 
-const SalesLog: React.FC<SalesLogProps> = ({ sales, inventory, currentUser, onCreateSale, onUpdateSale, onDeleteSale, showNotification }) => {
+const SalesLog: React.FC<SalesLogProps> = ({ sales, inventory, currentUser, onCreateSale, onUpdateSale, onDeleteSale, showNotification, adminKey }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingSale, setEditingSale] = useState<Sale | null>(null);
     const [formData, setFormData] = useState<Omit<Sale, 'id'>>(emptySaleForm);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [saleToDelete, setSaleToDelete] = useState<string | null>(null);
     const isAdmin = currentUser.role === 'Admin';
 
     const inventoryMap = useMemo(() => new Map(inventory.map(i => [i.id, i])), [inventory]);
@@ -88,7 +93,7 @@ const SalesLog: React.FC<SalesLogProps> = ({ sales, inventory, currentUser, onCr
         if (editingSale) {
             setFormData(editingSale);
         } else {
-            const defaultItem = availableInventory.length > 0 ? availableInventory[0].id : 0;
+            const defaultItem = availableInventory.length > 0 ? availableInventory[0].id : '';
             setFormData({...emptySaleForm, itemId: defaultItem });
         }
     }, [editingSale, availableInventory]);
@@ -125,10 +130,18 @@ const SalesLog: React.FC<SalesLogProps> = ({ sales, inventory, currentUser, onCr
         handleCloseModal();
     };
 
-    const handleDelete = (saleId: number) => {
-        if (window.confirm('Are you sure you want to delete this sale record? This will also mark the associated inventory item as "Available" again.')) {
-            onDeleteSale(saleId);
+    const handleDeleteRequest = (saleId: string) => {
+        setSaleToDelete(saleId);
+        setIsConfirmModalOpen(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (saleToDelete) {
+            onDeleteSale(saleToDelete);
+            showNotification('Sale record deleted successfully.');
         }
+        setIsConfirmModalOpen(false);
+        setSaleToDelete(null);
     };
 
     return (
@@ -169,7 +182,7 @@ const SalesLog: React.FC<SalesLogProps> = ({ sales, inventory, currentUser, onCr
                                     <td className="p-4 text-gray-500">
                                         <div className="flex space-x-4">
                                             <button onClick={() => handleOpenModal(sale)} className="hover:text-brand-green">Edit</button>
-                                            {isAdmin && <button onClick={() => handleDelete(sale.id)} className="text-red-500 hover:text-red-400">Delete</button>}
+                                            {isAdmin && <button onClick={() => handleDeleteRequest(sale.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                                         </div>
                                     </td>
                                 </tr>
@@ -187,7 +200,7 @@ const SalesLog: React.FC<SalesLogProps> = ({ sales, inventory, currentUser, onCr
                     </div>
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Select label="Item" name="itemId" value={formData.itemId} onChange={handleInputChange} required>
-                            <option value={0}>-- Select Item --</option>
+                            <option value="">-- Select Item --</option>
                             {availableInventory.map(item => (
                                 <option key={item.id} value={item.id}>
                                     {`${item.purchaseId} - ${item.itemType} - ${item.makeModel} (${item.serialNumber})`}
@@ -211,6 +224,16 @@ const SalesLog: React.FC<SalesLogProps> = ({ sales, inventory, currentUser, onCr
                     </div>
                 </div>
             </Modal>
+            
+            <AdminKeyConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                onConfirm={handleDeleteConfirm}
+                title="Delete Sale Record"
+                message="Are you sure you want to permanently delete this sale record? This action will also update the inventory item's status back to 'Available'."
+                adminKey={adminKey}
+                showNotification={showNotification}
+            />
         </div>
     );
 };

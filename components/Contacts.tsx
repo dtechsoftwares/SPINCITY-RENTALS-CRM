@@ -1,9 +1,8 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { Contact, ContactPlans, HookupTypes, User } from '../types';
 import { CloseIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
+import AdminKeyConfirmationModal from './AdminKeyConfirmationModal';
 
 // Modal and Input components defined here as they are specific to this view's style
 // FIX: Made `children` optional to resolve misleading "missing children" type error.
@@ -131,15 +130,19 @@ interface ContactsProps {
     currentUser: User;
     onCreateContact: (contact: Omit<Contact, 'id'>) => void;
     onUpdateContact: (contact: Contact) => void;
-    onDeleteContact: (contactId: number) => void;
+    // FIX: Changed contactId type to string to match Contact.id
+    onDeleteContact: (contactId: string) => void;
     showNotification: (message: string) => void;
+    adminKey: string;
 }
 
-const Contacts: React.FC<ContactsProps> = ({ contacts, currentUser, onCreateContact, onUpdateContact, onDeleteContact, showNotification }) => {
+const Contacts: React.FC<ContactsProps> = ({ contacts, currentUser, onCreateContact, onUpdateContact, onDeleteContact, showNotification, adminKey }) => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [viewingContact, setViewingContact] = useState<Contact | null>(null);
   const [formData, setFormData] = useState<Omit<Contact, 'id'>>(emptyContactForm);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<string | null>(null);
   const isAdmin = currentUser.role === 'Admin';
 
   useEffect(() => {
@@ -187,10 +190,18 @@ const Contacts: React.FC<ContactsProps> = ({ contacts, currentUser, onCreateCont
     closeFormModal();
   };
 
-  const handleDelete = (contactId: number) => {
-    if (window.confirm('Are you sure you want to delete this contact?')) {
-        onDeleteContact(contactId);
+  const handleDeleteRequest = (contactId: string) => {
+    setContactToDelete(contactId);
+    setIsConfirmModalOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (contactToDelete) {
+        onDeleteContact(contactToDelete);
+        showNotification('Contact deleted successfully.');
     }
+    setIsConfirmModalOpen(false);
+    setContactToDelete(null);
   };
 
   return (
@@ -214,7 +225,7 @@ const Contacts: React.FC<ContactsProps> = ({ contacts, currentUser, onCreateCont
                  <div className="flex space-x-4 text-gray-500">
                     <button onClick={() => setViewingContact(contact)} className="hover:text-brand-green">View</button>
                     <button onClick={() => openEditModal(contact)} className="hover:text-brand-green">Edit</button>
-                    {isAdmin && <button onClick={() => handleDelete(contact.id)} className="text-red-500 hover:text-red-400">Delete</button>}
+                    {isAdmin && <button onClick={() => handleDeleteRequest(contact.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                 </div>
               </li>
             ))}
@@ -251,6 +262,16 @@ const Contacts: React.FC<ContactsProps> = ({ contacts, currentUser, onCreateCont
       </Modal>
 
       <ContactDetailsModal contact={viewingContact} onClose={() => setViewingContact(null)} />
+      
+      <AdminKeyConfirmationModal
+        isOpen={isConfirmModalOpen}
+        onClose={() => setIsConfirmModalOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete Contact"
+        message={`Are you sure you want to permanently delete this contact? All associated data will be removed.`}
+        adminKey={adminKey}
+        showNotification={showNotification}
+      />
     </div>
   );
 };

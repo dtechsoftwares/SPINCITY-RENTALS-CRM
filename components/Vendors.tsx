@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Vendor, User, InventoryItem } from '../types';
 import { CloseIcon } from './Icons';
+import AdminKeyConfirmationModal from './AdminKeyConfirmationModal';
 
 // Modal component
 const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode, title: string }) => {
@@ -54,14 +55,18 @@ interface VendorsProps {
     currentUser: User;
     onCreateVendor: (vendor: Omit<Vendor, 'id'>) => void;
     onUpdateVendor: (vendor: Vendor) => void;
-    onDeleteVendor: (vendorId: number) => void;
+    // FIX: Changed ID type from number to string
+    onDeleteVendor: (vendorId: string) => void;
     showNotification: (message: string) => void;
+    adminKey: string;
 }
 
-const Vendors: React.FC<VendorsProps> = ({ vendors, inventory, currentUser, onCreateVendor, onUpdateVendor, onDeleteVendor, showNotification }) => {
+const Vendors: React.FC<VendorsProps> = ({ vendors, inventory, currentUser, onCreateVendor, onUpdateVendor, onDeleteVendor, showNotification, adminKey }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
     const [formData, setFormData] = useState<Omit<Vendor, 'id'>>(emptyVendorForm);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [vendorToDelete, setVendorToDelete] = useState<string | null>(null);
     const isAdmin = currentUser.role === 'Admin';
 
     const itemsPurchasedMap = useMemo(() => {
@@ -117,10 +122,18 @@ const Vendors: React.FC<VendorsProps> = ({ vendors, inventory, currentUser, onCr
         handleCloseModal();
     };
 
-    const handleDelete = (vendorId: number) => {
-        if (window.confirm('Are you sure you want to delete this vendor?')) {
-            onDeleteVendor(vendorId);
+    const handleDeleteRequest = (vendorId: string) => {
+        setVendorToDelete(vendorId);
+        setIsConfirmModalOpen(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (vendorToDelete) {
+            onDeleteVendor(vendorToDelete);
+            showNotification('Vendor deleted successfully.');
         }
+        setIsConfirmModalOpen(false);
+        setVendorToDelete(null);
     };
 
     return (
@@ -157,7 +170,7 @@ const Vendors: React.FC<VendorsProps> = ({ vendors, inventory, currentUser, onCr
                                 <td className="p-4 text-gray-500">
                                     <div className="flex space-x-4">
                                         <button onClick={() => handleOpenModal(vendor)} className="hover:text-brand-green">Edit</button>
-                                        {isAdmin && <button onClick={() => handleDelete(vendor.id)} className="text-red-500 hover:text-red-400">Delete</button>}
+                                        {isAdmin && <button onClick={() => handleDeleteRequest(vendor.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                                     </div>
                                 </td>
                             </tr>
@@ -187,6 +200,16 @@ const Vendors: React.FC<VendorsProps> = ({ vendors, inventory, currentUser, onCr
                     </div>
                 </div>
             </Modal>
+            
+            <AdminKeyConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                onConfirm={handleDeleteConfirm}
+                title="Delete Vendor"
+                message="Are you sure you want to permanently delete this vendor?"
+                adminKey={adminKey}
+                showNotification={showNotification}
+            />
         </div>
     );
 };

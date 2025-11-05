@@ -1,9 +1,8 @@
-
-
 import React, { useState, useMemo } from 'react';
 import { Rental, Contact, RentalPlan, RentalPlans, MaintenanceOptions, RentalStatuses, MaintenanceOption, RentalStatus, DeliveryPaymentOptions, DeliveryPaymentOption, User } from '../types';
 import { CloseIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
+import AdminKeyConfirmationModal from './AdminKeyConfirmationModal';
 
 // NOTE: Re-implementing common components here to avoid creating new files.
 // In a larger app, these would be in a shared 'components/common' directory.
@@ -71,7 +70,8 @@ const Section: React.FC<{ title: string, children: React.ReactNode }> = ({ title
 };
 
 const emptyRentalForm: Omit<Rental, 'id'> = {
-    contactId: 0,
+    // FIX: Changed from 0 to empty string to match string type
+    contactId: '',
     plan: '12-Month Smart Plan',
     maintenanceOption: 'Maintenance Plan',
     status: 'Pending Signature',
@@ -97,21 +97,27 @@ interface RentalsProps {
     currentUser: User;
     onCreateRental: (rental: Omit<Rental, 'id'>) => void;
     onUpdateRental: (rental: Rental) => void;
-    onDeleteRental: (rentalId: number) => void;
+    // FIX: Changed ID type from number to string
+    onDeleteRental: (rentalId: string) => void;
     showNotification: (message: string) => void;
+    adminKey: string;
 }
 
-const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCreateRental, onUpdateRental, onDeleteRental, showNotification }) => {
+const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCreateRental, onUpdateRental, onDeleteRental, showNotification, adminKey }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRental, setEditingRental] = useState<Rental | null>(null);
-    const [formData, setFormData] = useState<Omit<Rental, 'id'> & { contactId: number | string }>(emptyRentalForm);
+    // FIX: Simplified state type
+    const [formData, setFormData] = useState<Omit<Rental, 'id'>>(emptyRentalForm);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [rentalToDelete, setRentalToDelete] = useState<string | null>(null);
     const isAdmin = currentUser.role === 'Admin';
 
     const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
 
     const handleOpenModal = (rental: Rental | null) => {
         setEditingRental(rental);
-        setFormData(rental ? { ...rental, contactId: rental.contactId.toString() } : { ...emptyRentalForm, contactId: contacts[0]?.id.toString() || '' });
+        // FIX: Correctly set initial form data for new or existing rentals
+        setFormData(rental || { ...emptyRentalForm, contactId: contacts[0]?.id || '' });
         setIsModalOpen(true);
     };
 
@@ -132,7 +138,8 @@ const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCre
         }
         
         if (name === 'contactId') {
-            const selectedContactId = value ? parseInt(value) : '';
+            // FIX: contactId is a string, no need to parse.
+            const selectedContactId = value;
             const selectedContact = contactMap.get(selectedContactId);
             newFormData.contactId = selectedContactId;
             
@@ -161,9 +168,9 @@ const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCre
             return;
         }
 
+        // FIX: contactId is a string, no need to convert to Number.
         const submissionData = {
             ...formData,
-            contactId: Number(formData.contactId),
             monthlyRate: RentalPlans[formData.plan as RentalPlan]
         };
 
@@ -177,10 +184,18 @@ const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCre
         handleCloseModal();
     };
 
-    const handleDelete = (rentalId: number) => {
-        if (window.confirm('Are you sure you want to delete this rental agreement?')) {
-            onDeleteRental(rentalId);
+    const handleDeleteRequest = (rentalId: string) => {
+        setRentalToDelete(rentalId);
+        setIsConfirmModalOpen(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (rentalToDelete) {
+            onDeleteRental(rentalToDelete);
+            showNotification('Rental agreement deleted successfully.');
         }
+        setIsConfirmModalOpen(false);
+        setRentalToDelete(null);
     };
 
     const getStatusColor = (status: RentalStatus) => {
@@ -226,7 +241,7 @@ const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCre
                                 <td className="p-4 text-gray-500">
                                     <div className="flex space-x-4">
                                         <button onClick={() => handleOpenModal(rental)} className="hover:text-brand-green">Edit</button>
-                                        {isAdmin && <button onClick={() => handleDelete(rental.id)} className="text-red-500 hover:text-red-400">Delete</button>}
+                                        {isAdmin && <button onClick={() => handleDeleteRequest(rental.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                                     </div>
                                 </td>
                             </tr>
@@ -326,6 +341,16 @@ const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCre
                 </div>
             </div>
         </Modal>
+
+        <AdminKeyConfirmationModal
+            isOpen={isConfirmModalOpen}
+            onClose={() => setIsConfirmModalOpen(false)}
+            onConfirm={handleDeleteConfirm}
+            title="Delete Rental Agreement"
+            message="Are you sure you want to permanently delete this rental agreement?"
+            adminKey={adminKey}
+            showNotification={showNotification}
+        />
     </div>
   );
 };

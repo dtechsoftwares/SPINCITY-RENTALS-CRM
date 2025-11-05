@@ -1,9 +1,8 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { CloseIcon } from './Icons';
 import { defaultLogoBase64 } from '../utils/assets';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 
 // FIX: Make children optional to resolve misleading "missing children" type error.
 const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode, title: string }) => {
@@ -26,70 +25,158 @@ const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose:
   );
 };
 
+// FIX: Added Input component definition to resolve 'Cannot find name' error.
+const Input = ({ label, type = 'text', name, value, onChange, required=false, placeholder='' }: { label: string, type?: string, name: string, value: string, onChange: (e: React.ChangeEvent<any>) => void, required?: boolean, placeholder?: string }) => (
+    <div>
+        <label className="block text-sm font-medium text-gray-600 mb-1">{label}{required && <span className="text-red-500">*</span>}</label>
+        <input type={type} name={name} value={value} onChange={onChange} required={required} placeholder={placeholder} className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-green text-brand-text" />
+    </div>
+);
+
+
 interface LoginProps {
   users: User[];
   onLogin: (user: User) => void;
-  onRegisterSuccess: (user: User) => void;
+  onRegisterSuccess: (user: Omit<User, 'id'>) => void;
   adminKey: string;
   splashLogo: string | null;
+  isFirebaseConfigured: boolean;
 }
 
-const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminKey, splashLogo }) => {
+const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminKey, splashLogo, isFirebaseConfigured }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-  const [enteredAdminKey, setEnteredAdminKey] = useState('');
-  const [registerError, setRegisterError] = useState('');
-  const [isVerifyingKey, setIsVerifyingKey] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (!isRegisterModalOpen) {
-        setEnteredAdminKey('');
-        setRegisterError('');
-        setIsVerifyingKey(false);
-    }
-  }, [isRegisterModalOpen]);
+  // Registration state
+  const [regName, setRegName] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regAdminKey, setRegAdminKey] = useState('');
+  const [regError, setRegError] = useState('');
 
-  const performRegistration = () => {
-    const adminUser = users.find(u => u.email === 'admin@spincity.com');
-    if (adminUser) {
-        onRegisterSuccess(adminUser);
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsSubmitting(true);
+    
+    if (isFirebaseConfigured) {
+        try {
+            const auth = getAuth();
+            const userCredential = await signInWithEmailAndPassword(auth, email, password);
+            const appUser = users.find(u => u.email.toLowerCase() === userCredential.user.email?.toLowerCase());
+            if (appUser) {
+                onLogin(appUser);
+            } else {
+                setError('Authentication successful, but could not find user profile.');
+            }
+        } catch (err: any) {
+            setError('Invalid email or password.');
+        } finally {
+            setIsSubmitting(false);
+        }
     } else {
-        setRegisterError('Default admin user not found. Please contact support.');
+        // LocalStorage Auth
+        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+        setTimeout(() => { // simulate network delay
+            if (user) {
+                onLogin(user);
+            } else {
+                setError('Invalid email or password.');
+            }
+            setIsSubmitting(false);
+        }, 500);
     }
   };
 
-  useEffect(() => {
-    if (enteredAdminKey.length > 0) {
-      setRegisterError(''); // Clear previous error on new input
-      const timer = setTimeout(() => {
-        setIsVerifyingKey(true);
-        // Simulate network delay for verification
-        setTimeout(() => {
-          if (enteredAdminKey === adminKey) {
-            performRegistration();
-          } else {
-            setRegisterError('Invalid Admin Registration Key.');
-          }
-          setIsVerifyingKey(false);
-        }, 1000);
-      }, 700); // Debounce typing
-      return () => clearTimeout(timer);
-    }
-  }, [enteredAdminKey, adminKey]);
-
-
-  const handleLogin = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = users.find(u => u.email === email && u.password === password);
-    if (user) {
-      onLogin(user);
+    setRegError('');
+    setIsSubmitting(true);
+    
+     if (regPassword.length < 6) {
+        setRegError("Password should be at least 6 characters.");
+        setIsSubmitting(false);
+        return;
+    }
+
+    const isFirstUser = users.length === 0;
+    if (isFirstUser && regAdminKey !== adminKey) {
+        setRegError('Invalid Admin Key.');
+        setIsSubmitting(false);
+        return;
+    }
+
+    if (isFirebaseConfigured) {
+        try {
+            const auth = getAuth();
+            await createUserWithEmailAndPassword(auth, regEmail, regPassword);
+            const newUser: Omit<User, 'id'> = {
+                name: regName,
+                email: regEmail,
+                role: isFirstUser ? 'Admin' : 'User',
+                avatar: `https://picsum.photos/seed/${regName}/80/80`
+            };
+            onRegisterSuccess(newUser); 
+        } catch (err: any) {
+            if (err.code === 'auth/email-already-in-use') {
+                setRegError('This email is already registered.');
+            } else {
+                setRegError('Failed to register. Please try again.');
+            }
+        } finally {
+            setIsSubmitting(false);
+        }
     } else {
-      setError('Invalid email or password.');
+        // LocalStorage Registration
+        if (users.find(u => u.email.toLowerCase() === regEmail.toLowerCase())) {
+            setRegError('This email is already registered.');
+            setIsSubmitting(false);
+            return;
+        }
+        const newUser: Omit<User, 'id'> = {
+            name: regName,
+            email: regEmail,
+            password: regPassword,
+            role: isFirstUser ? 'Admin' : 'User',
+            avatar: `https://picsum.photos/seed/${regName}/80/80`
+        };
+        onRegisterSuccess(newUser);
+        setIsSubmitting(false);
     }
   };
   
+  // If no users exist, show the admin creation screen instead of the login form
+  if (users.length === 0) {
+    return (
+      <div className="min-h-screen bg-brand-green flex flex-col justify-center items-center p-4">
+        <div className="max-w-md w-full mx-auto bg-white p-8 rounded-xl shadow-md border border-gray-200">
+          <div className="mb-6">
+            <img src={splashLogo || defaultLogoBase64} alt="Spin City Rentals Logo" className="w-32 h-32 mx-auto object-contain" />
+          </div>
+          <h2 className="text-2xl font-bold text-center mb-2">Create Admin Account</h2>
+          <p className="text-center text-gray-500 mb-6">Welcome! As the first user, you will become the administrator.</p>
+          
+          {regError && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{regError}</p>}
+          <form onSubmit={handleRegister} className="space-y-4">
+            <Input label="Full Name" name="name" value={regName} onChange={(e) => setRegName(e.target.value)} required />
+            <Input label="Email Address" type="email" name="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
+            <Input label="Password (min. 6 characters)" type="password" name="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
+            <Input label="Admin Key" type="password" name="adminKey" value={regAdminKey} onChange={(e) => setRegAdminKey(e.target.value)} required placeholder="Secret key from settings"/>
+            
+            <button type="submit" disabled={isSubmitting} className="w-full bg-brand-green text-white font-bold py-3 rounded-lg hover:bg-brand-green-dark transition-colors disabled:bg-gray-400 mt-6">
+              {isSubmitting ? 'Creating Account...' : 'Create Admin Account'}
+            </button>
+          </form>
+          <p className="text-center mt-8 text-xs text-gray-400">Powered By: Cicadas IT Solutions</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Otherwise, show the regular login screen
   return (
     <div className="min-h-screen bg-brand-green flex flex-col justify-center items-center p-4">
       <div className="max-w-md w-full mx-auto bg-white p-8 rounded-xl shadow-md border border-gray-200">
@@ -118,8 +205,8 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
                 required
               />
             </div>
-            <button type="submit" className="w-full bg-brand-green text-white font-bold py-3 rounded-lg hover:bg-brand-green-dark transition-colors">
-              Login
+            <button type="submit" disabled={isSubmitting} className="w-full bg-brand-green text-white font-bold py-3 rounded-lg hover:bg-brand-green-dark transition-colors disabled:bg-gray-400">
+              {isSubmitting ? 'Logging in...' : 'Login'}
             </button>
           </form>
           <div className="text-center mt-6">
@@ -129,33 +216,20 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
           </div>
           <p className="text-center mt-8 text-xs text-gray-400">Powered By: Cicadas IT Solutions</p>
       </div>
-      <Modal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} title="Admin Registration">
-          <p className="text-gray-600 mb-4">To register the first admin user and set up the system, please enter the Admin Registration Key.</p>
-          {registerError && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{registerError}</p>}
-          <div className="space-y-4">
-              <div>
-                  <label className="block text-sm font-medium text-gray-600 mb-1">Admin Registration Key</label>
-                  <div className="relative">
-                    <input 
-                        type="password" 
-                        value={enteredAdminKey} 
-                        onChange={e => setEnteredAdminKey(e.target.value)} 
-                        className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-green" 
-                    />
-                    {isVerifyingKey && (
-                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
-                            <div className="w-5 h-5 border-2 border-t-2 border-gray-200 border-t-brand-green rounded-full animate-spin"></div>
-                        </div>
-                    )}
-                  </div>
-              </div>
+      <Modal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} title="Register New User">
+          <p className="text-gray-600 mb-4">Create a new account to access the CRM.</p>
+          {regError && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{regError}</p>}
+          <form onSubmit={handleRegister} className="space-y-4">
+              <Input label="Full Name" name="name" value={regName} onChange={(e) => setRegName(e.target.value)} required />
+              <Input label="Email Address" type="email" name="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
+              <Input label="Password (min. 6 characters)" type="password" name="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
               <div className="flex justify-end space-x-4 pt-2">
-                <button onClick={() => setIsRegisterModalOpen(false)} className="bg-gray-200 text-gray-700 font-bold py-2 px-6 rounded-lg hover:bg-gray-300">Cancel</button>
-                <button disabled className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg opacity-50 cursor-not-allowed">
-                    Auto-verifying...
+                <button type="button" onClick={() => setIsRegisterModalOpen(false)} className="bg-gray-200 text-gray-700 font-bold py-2 px-6 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button type="submit" disabled={isSubmitting} className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-green-dark disabled:bg-gray-400">
+                    {isSubmitting ? 'Registering...' : 'Register'}
                 </button>
               </div>
-          </div>
+          </form>
       </Modal>
     </div>
   );

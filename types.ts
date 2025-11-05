@@ -1,6 +1,3 @@
-
-
-
 export enum AppView {
   Dashboard,
   Inventory,
@@ -16,10 +13,10 @@ export enum AppView {
 }
 
 export interface User {
-  id: number;
+  id: string; // Firestore uses string IDs
   name: string;
   email: string;
-  password?: string; // Made optional for existing mock data, but required for new users
+  password?: string;
   role: 'Admin' | 'User';
   avatar: string;
 }
@@ -40,7 +37,7 @@ export const HookupTypes = [
 export type HookupType = typeof HookupTypes[number];
 
 export interface Contact {
-  id: number;
+  id: string; // Firestore uses string IDs
   fullName: string;
   email: string;
   phone: string;
@@ -48,7 +45,6 @@ export interface Contact {
   plan: ContactPlan;
   hookupType: HookupType;
   notes?: string;
-  // It's useful to have a creation date for reporting
   createdAt: string; // 'YYYY-MM-DD'
 }
 
@@ -72,8 +68,8 @@ export const DeliveryPaymentOptions = [
 export type DeliveryPaymentOption = typeof DeliveryPaymentOptions[number];
 
 export interface Rental {
-    id: number;
-    contactId: number; // Link to a contact
+    id: string; // Firestore uses string IDs
+    contactId: string; // Link to a contact
     plan: RentalPlan;
     maintenanceOption: MaintenanceOption;
     status: RentalStatus;
@@ -131,8 +127,8 @@ export type PreferredTimeOfDay = typeof PreferredTimesOfDay[number];
 
 
 export interface Repair {
-    id: number;
-    contactId: number; // Link to a contact
+    id: string; // Firestore uses string IDs
+    contactId: string; // Link to a contact
     appliance: Appliance;
     issueDescription: string;
     status: RepairStatus;
@@ -164,7 +160,7 @@ export interface SmsSettings {
 }
 
 export interface Vendor {
-    id: number;
+    id: string; // Firestore uses string IDs
     vendorId: string;
     vendorName: string;
     contactPerson: string;
@@ -186,7 +182,7 @@ export const InventoryStatuses = ['Available', 'Rented', 'In Repair', 'Sold', 'D
 export type InventoryStatus = typeof InventoryStatuses[number];
 
 export interface InventoryItem {
-    id: number;
+    id: string; // Firestore uses string IDs
     purchaseId: string;
     purchaseDate: string; // YYYY-MM-DD
     vendor: string;
@@ -200,10 +196,10 @@ export interface InventoryItem {
 }
 
 export interface Sale {
-    id: number;
+    id: string; // Firestore uses string IDs
     saleId: string;
     saleDate: string; // YYYY-MM-DD
-    itemId: number; // links to InventoryItem id
+    itemId: string; // links to InventoryItem id
     salePrice: number;
     buyerName: string;
     buyerContact: string;

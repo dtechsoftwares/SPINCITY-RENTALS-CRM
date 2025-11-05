@@ -1,10 +1,8 @@
-
-
-
 import React, { useState, useMemo, useCallback } from 'react';
 import { Repair, Contact, Appliances, UrgencyLevels, RepairStatuses, Appliance, UrgencyLevel, RepairStatus, IssueTypes, PreferredTimesOfDay, IssueType, PreferredTimeOfDay, User } from '../types';
 import { CloseIcon, PaperclipIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
+import AdminKeyConfirmationModal from './AdminKeyConfirmationModal';
 
 // NOTE: Re-implementing common components here to avoid creating new files.
 const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode, title: string }) => {
@@ -130,7 +128,8 @@ const Textarea = ({ label, name, value, onChange, placeholder, required=false }:
 );
 
 const emptyRepairForm: Omit<Repair, 'id'> = {
-    contactId: 0,
+    // FIX: Changed from 0 to empty string to match string type
+    contactId: '',
     appliance: 'Washing Machine',
     issueDescription: '',
     status: 'Open',
@@ -155,32 +154,37 @@ interface RepairsProps {
     currentUser: User;
     onCreateRepair: (repair: Omit<Repair, 'id'>) => void;
     onUpdateRepair: (repair: Repair) => void;
-    onDeleteRepair: (repairId: number) => void;
+    // FIX: Changed ID type from number to string
+    onDeleteRepair: (repairId: string) => void;
     showNotification: (message: string) => void;
+    adminKey: string;
 }
 
-const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCreateRepair, onUpdateRepair, onDeleteRepair, showNotification }) => {
+const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCreateRepair, onUpdateRepair, onDeleteRepair, showNotification, adminKey }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRepair, setEditingRepair] = useState<Repair | null>(null);
     const [viewingRepair, setViewingRepair] = useState<Repair | null>(null);
-    const [formData, setFormData] = useState<Omit<Repair, 'id'> & { contactId: number | string }>(emptyRepairForm);
+    // FIX: Simplified state type
+    const [formData, setFormData] = useState<Omit<Repair, 'id'>>(emptyRepairForm);
     const [isDragging, setIsDragging] = useState(false);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [repairToDelete, setRepairToDelete] = useState<string | null>(null);
     const isAdmin = currentUser.role === 'Admin';
 
     const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
 
     const handleOpenModal = (repair: Repair | null) => {
         setEditingRepair(repair);
-        const initialContactId = repair?.contactId.toString() || contacts[0]?.id.toString() || '';
-        const initialFormData = repair ? { ...repair, contactId: initialContactId } : { ...emptyRepairForm, contactId: initialContactId };
+        const initialContactId = repair?.contactId || contacts[0]?.id || '';
+        let initialFormData = repair ? repair : { ...emptyRepairForm, contactId: initialContactId };
 
         if (!repair && initialContactId) {
-            const contact = contactMap.get(parseInt(initialContactId));
+            const contact = contactMap.get(initialContactId);
             if (contact) {
-                const [address, city, zip] = contact.address.split(',').map(s => s.trim());
-                initialFormData.serviceAddress = address || contact.address;
-                initialFormData.city = city || '';
-                initialFormData.zipCode = zip || '';
+                const addressParts = contact.address.split(',').map(s => s.trim());
+                initialFormData.serviceAddress = addressParts[0] || contact.address;
+                initialFormData.city = addressParts[1] || '';
+                initialFormData.zipCode = addressParts[2] || '';
             }
         }
         
@@ -195,12 +199,12 @@ const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCre
         let newFormData:any = { ...formData, [name]: value };
 
         if (name === 'contactId') {
-            const selectedContact = contactMap.get(parseInt(value));
+            const selectedContact = contactMap.get(value);
             if (selectedContact) {
-                const [address, city, zip] = selectedContact.address.split(',').map(s => s.trim());
-                newFormData.serviceAddress = address || selectedContact.address;
-                newFormData.city = city || '';
-                newFormData.zipCode = zip || '';
+                const addressParts = selectedContact.address.split(',').map(s => s.trim());
+                newFormData.serviceAddress = addressParts[0] || selectedContact.address;
+                newFormData.city = addressParts[1] || '';
+                newFormData.zipCode = addressParts[2] || '';
             } else {
                 newFormData.serviceAddress = '';
                 newFormData.city = '';
@@ -265,9 +269,9 @@ const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCre
             return;
         }
 
+        // FIX: contactId is a string, no need to convert to Number.
         const submissionData = {
             ...formData,
-            contactId: Number(formData.contactId),
         };
 
         if (editingRepair) {
@@ -280,10 +284,18 @@ const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCre
         handleCloseModal();
     };
 
-    const handleDelete = (repairId: number) => {
-        if (window.confirm('Are you sure you want to delete this repair request?')) {
-            onDeleteRepair(repairId);
+    const handleDeleteRequest = (repairId: string) => {
+        setRepairToDelete(repairId);
+        setIsConfirmModalOpen(true);
+    };
+
+    const handleDeleteConfirm = () => {
+        if (repairToDelete) {
+            onDeleteRepair(repairToDelete);
+            showNotification('Repair request deleted successfully.');
         }
+        setIsConfirmModalOpen(false);
+        setRepairToDelete(null);
     };
 
     return (
@@ -322,7 +334,7 @@ const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCre
                                     <div className="flex space-x-4 text-gray-500">
                                         <button onClick={() => setViewingRepair(repair)} className="hover:text-brand-green">View</button>
                                         <button onClick={() => handleOpenModal(repair)} className="hover:text-brand-green">Edit</button>
-                                        {isAdmin && <button onClick={() => handleDelete(repair.id)} className="text-red-500 hover:text-red-400">Delete</button>}
+                                        {isAdmin && <button onClick={() => handleDeleteRequest(repair.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                                     </div>
                                 </td>
                             </tr>
@@ -430,6 +442,16 @@ const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCre
             </Modal>
 
             <RepairDetailsModal repair={viewingRepair} onClose={() => setViewingRepair(null)} contact={viewingRepair ? contactMap.get(viewingRepair.contactId) : undefined} />
+
+            <AdminKeyConfirmationModal
+                isOpen={isConfirmModalOpen}
+                onClose={() => setIsConfirmModalOpen(false)}
+                onConfirm={handleDeleteConfirm}
+                title="Delete Repair Request"
+                message="Are you sure you want to permanently delete this repair request?"
+                adminKey={adminKey}
+                showNotification={showNotification}
+            />
         </div>
     );
 };

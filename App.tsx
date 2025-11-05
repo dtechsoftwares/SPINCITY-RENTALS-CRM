@@ -1,5 +1,3 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { AppView, User, Contact, Rental, Repair, SmsSettings, InventoryItem, Sale, Vendor } from './types';
 import Sidebar from './components/Sidebar';
@@ -16,10 +14,18 @@ import Preloader from './components/Preloader';
 import Login from './components/Login';
 import Notifications from './components/Notifications';
 import Reports from './components/Reports';
-import { loadUsers, saveUsers, loadCurrentUser, saveCurrentUser, clearCurrentUser, saveAppLogo, loadAppLogo, loadContacts, saveContacts, loadRentals, saveRentals, loadRepairs, saveRepairs, loadSmsSettings, saveSmsSettings, loadAdminKey, saveAdminKey, loadSplashLogo, saveSplashLogo, loadInventory, saveInventory, loadSales, saveSales, loadVendors, saveVendors } from './utils/storage';
+import * as db from './utils/storage';
 import { getTodayDateString } from './utils/dates';
 import Spinner from './components/Spinner';
 import Notification from './components/Notification';
+import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
+
+const DemoModeBanner = () => (
+    <div className="bg-yellow-100 border-b-2 border-yellow-300 text-yellow-800 p-3 text-center text-sm w-full">
+        <strong>Demo Mode:</strong> Firebase is not configured. All data is stored in your browser and will be lost if you clear your cache.
+        Update <code className="font-mono bg-yellow-200 p-1 rounded">utils/storage.ts</code> to connect to a database.
+    </div>
+);
 
 interface HeaderProps {
     viewName: string;
@@ -44,44 +50,100 @@ const Header: React.FC<HeaderProps> = ({ viewName, user }) => {
 };
 
 const App: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [appLoading, setAppLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>(AppView.Dashboard);
-  const [users, setUsers] = useState<User[]>(loadUsers());
-  const [currentUser, setCurrentUser] = useState<User | null>(loadCurrentUser());
-  const [contacts, setContacts] = useState<Contact[]>(loadContacts());
-  const [rentals, setRentals] = useState<Rental[]>(loadRentals());
-  const [repairs, setRepairs] = useState<Repair[]>(loadRepairs());
-  const [inventory, setInventory] = useState<InventoryItem[]>(loadInventory());
-  const [sales, setSales] = useState<Sale[]>(loadSales());
-  const [vendors, setVendors] = useState<Vendor[]>(loadVendors());
-  const [appLogo, setAppLogo] = useState<string | null>(loadAppLogo());
-  const [splashLogo, setSplashLogo] = useState<string | null>(loadSplashLogo());
-  const [smsSettings, setSmsSettings] = useState<SmsSettings>(loadSmsSettings());
-  const [adminKey, setAdminKey] = useState<string>(loadAdminKey());
+  
+  const [users, setUsers] = useState<User[]>([]);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [rentals, setRentals] = useState<Rental[]>([]);
+  const [repairs, setRepairs] = useState<Repair[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  
+  const [appLogo, setAppLogo] = useState<string | null>(null);
+  const [splashLogo, setSplashLogo] = useState<string | null>(null);
+  const [smsSettings, setSmsSettings] = useState<SmsSettings>({ apiKey: '', senderId: '', endpointUrl: '' });
+  const [adminKey, setAdminKey] = useState<string>('');
+  
   const [notification, setNotification] = useState('');
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 4000); // Splash screen for 4 seconds
-    return () => clearTimeout(timer);
+    const loadInitialData = async () => {
+        // Load settings first as they are needed for preloader/login
+        setSplashLogo(await db.loadSplashLogo());
+        setAdminKey(await db.loadAdminKey());
+
+        if (db.isFirebaseConfigured()) {
+            const auth = getAuth();
+            const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+                setIsActionLoading(true);
+                if (firebaseUser) {
+                    const loadedUsers = await db.loadUsers();
+                    setUsers(loadedUsers);
+                    const appUser = loadedUsers.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+                    setCurrentUser(appUser || null);
+
+                    if (appUser) {
+                        setContacts(await db.loadContacts());
+                        setRentals(await db.loadRentals());
+                        setRepairs(await db.loadRepairs());
+                        setInventory(await db.loadInventory());
+                        setSales(await db.loadSales());
+                        setVendors(await db.loadVendors());
+                        setAppLogo(await db.loadAppLogo());
+                        setSmsSettings(await db.loadSmsSettings());
+                    }
+                } else {
+                    setCurrentUser(null);
+                    setUsers(await db.loadUsers()); // still load users for registration check
+                }
+                setAppLoading(false);
+                setIsActionLoading(false);
+            });
+            return () => unsubscribe();
+        } else {
+            // Demo Mode: Load from localStorage
+            setIsActionLoading(true);
+            const loadedUsers = await db.loadUsers();
+            setUsers(loadedUsers);
+            const loggedInUser = await db.loadCurrentUser();
+            setCurrentUser(loggedInUser);
+
+            if (loggedInUser) {
+                 setContacts(await db.loadContacts());
+                 setRentals(await db.loadRentals());
+                 setRepairs(await db.loadRepairs());
+                 setInventory(await db.loadInventory());
+                 setSales(await db.loadSales());
+                 setVendors(await db.loadVendors());
+                 setAppLogo(await db.loadAppLogo());
+                 setSmsSettings(await db.loadSmsSettings());
+            }
+            setAppLoading(false);
+            setIsActionLoading(false);
+        }
+    };
+
+    loadInitialData();
   }, []);
   
   const showNotification = (message: string) => {
     setNotification(message);
-    setTimeout(() => {
-        setNotification('');
-    }, 3000); // Hide after 3 seconds
+    setTimeout(() => setNotification(''), 3000);
   };
 
-  const handleAction = async (action: () => void | Promise<void>) => {
+  const handleAction = async (action: () => void | Promise<any>) => {
     setIsActionLoading(true);
     try {
-      // Simulate a minimum delay for better UX
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await action();
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const result = await action();
+      return result;
     } catch (error) {
       console.error("An error occurred during the action:", error);
-      // Optionally, show an error message to the user
+      showNotification('An error occurred. Please try again.');
     } finally {
       setIsActionLoading(false);
     }
@@ -89,221 +151,208 @@ const App: React.FC = () => {
 
   const handleViewChange = (view: AppView) => {
     if (view === currentView) return;
-    
+    // Use the action handler to show spinner for view changes for better UX feedback.
     handleAction(() => {
         setCurrentView(view);
     });
   };
 
-  const handleLogin = (user: User) => handleAction(() => {
+  const handleLogin = (user: User) => {
+    if (!db.isFirebaseConfigured()) {
+        handleAction(() => db.saveCurrentUser(user));
+    }
     setCurrentUser(user);
-    saveCurrentUser(user);
     handleViewChange(AppView.Dashboard);
-    showNotification(`Welcome, ${user.name}!`);
-  });
+    showNotification(`Welcome back, ${user.name}!`);
+  };
+
+  // --- Internal Unwrapped Functions ---
+  const internalCreateUser = async (newUser: Omit<User, 'id'>) => {
+    const createdUser = await db.createUser(newUser);
+    setUsers(users => [...users, createdUser]);
+    return createdUser;
+  };
   
-  const handleRegisterSuccess = (user: User) => handleAction(() => {
-    handleLogin(user);
-    handleViewChange(AppView.Dashboard);
+  const internalUpdateInventory = async (updatedItem: InventoryItem) => {
+    await db.updateInventory(updatedItem);
+    setInventory(inventory => inventory.map(i => i.id === updatedItem.id ? updatedItem : i));
+  };
+
+
+  // --- Wrapped Handlers for Components ---
+  const handleRegisterSuccess = (newUser: Omit<User, 'id'>) => handleAction(async () => {
+    const createdUser = await internalCreateUser(newUser);
+    if(createdUser) {
+        if (!db.isFirebaseConfigured()) {
+            await db.saveCurrentUser(createdUser);
+        }
+        setCurrentUser(createdUser);
+        handleViewChange(AppView.Dashboard);
+    }
   });
 
-  const handleLogout = () => handleAction(() => {
+  const handleLogout = () => handleAction(async () => {
+    if (db.isFirebaseConfigured()) {
+        await signOut(getAuth());
+    } else {
+        await db.clearCurrentUser();
+    }
     setCurrentUser(null);
-    clearCurrentUser();
   });
   
-  const handleCreateUser = (newUser: Omit<User, 'id'>) => handleAction(() => {
-    const updatedUsers = [...users, { ...newUser, id: Date.now() }];
-    setUsers(updatedUsers);
-    saveUsers(updatedUsers);
+  const handleCreateUser = (newUser: Omit<User, 'id'>) => handleAction(async () => {
+    return await internalCreateUser(newUser);
   });
   
-  const handleUpdateUser = (updatedUser: User) => handleAction(() => {
+  const handleUpdateUser = (updatedUser: User) => handleAction(async () => {
+    await db.updateUser(updatedUser);
     const updatedUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
     setUsers(updatedUsers);
-    saveUsers(updatedUsers);
-
     if (currentUser && currentUser.id === updatedUser.id) {
         setCurrentUser(updatedUser);
-        saveCurrentUser(updatedUser);
+        if (!db.isFirebaseConfigured()) {
+            await db.saveCurrentUser(updatedUser);
+        }
     }
   });
   
-  const handleDeleteUser = (userId: number) => handleAction(() => {
-    const updatedUsers = users.filter(u => u.id !== userId);
-    setUsers(updatedUsers);
-    saveUsers(updatedUsers);
+  const handleDeleteUser = (userId: string) => handleAction(async () => {
+    await db.deleteUser(userId);
+    setUsers(users.filter(u => u.id !== userId));
   });
 
-  const handleUpdateLogo = (logo: string | null) => handleAction(() => {
+  const handleUpdateLogo = (logo: string | null) => handleAction(async () => {
+    await db.saveAppLogo(logo);
     setAppLogo(logo);
-    saveAppLogo(logo);
   });
 
-  const handleUpdateSplashLogo = (logo: string | null) => handleAction(() => {
+  const handleUpdateSplashLogo = (logo: string | null) => handleAction(async () => {
+    await db.saveSplashLogo(logo);
     setSplashLogo(logo);
-    saveSplashLogo(logo);
   });
 
-  const handleCreateContact = (newContact: Omit<Contact, 'id'>) => handleAction(() => {
-    const contactWithDate = { ...newContact, id: Date.now(), createdAt: getTodayDateString() };
-    const updatedContacts = [contactWithDate, ...contacts];
-    setContacts(updatedContacts);
-    saveContacts(updatedContacts);
+  const handleCreateContact = (newContact: Omit<Contact, 'id'>) => handleAction(async () => {
+    const contactWithDate = { ...newContact, createdAt: getTodayDateString() };
+    const createdContact = await db.createContact(contactWithDate);
+    setContacts([createdContact, ...contacts]);
   });
   
-  const handleUpdateContact = (updatedContact: Contact) => handleAction(() => {
-    const updatedContacts = contacts.map(c => c.id === updatedContact.id ? updatedContact : c);
-    setContacts(updatedContacts);
-    saveContacts(updatedContacts);
+  const handleUpdateContact = (updatedContact: Contact) => handleAction(async () => {
+    await db.updateContact(updatedContact);
+    setContacts(contacts.map(c => c.id === updatedContact.id ? updatedContact : c));
   });
   
-  const handleDeleteContact = (contactId: number) => handleAction(() => {
-    const updatedContacts = contacts.filter(c => c.id !== contactId);
-    setContacts(updatedContacts);
-    saveContacts(updatedContacts);
+  const handleDeleteContact = (contactId: string) => handleAction(async () => {
+    await db.deleteContact(contactId);
+    setContacts(contacts.filter(c => c.id !== contactId));
   });
 
-  const handleCreateRental = (newRental: Omit<Rental, 'id'>) => handleAction(() => {
-    const updatedRentals = [{...newRental, id: Date.now()}, ...rentals];
-    setRentals(updatedRentals);
-    saveRentals(updatedRentals);
+  const handleCreateRental = (newRental: Omit<Rental, 'id'>) => handleAction(async () => {
+    const createdRental = await db.createRental(newRental);
+    setRentals([createdRental, ...rentals]);
   });
 
-  const handleUpdateRental = (updatedRental: Rental) => handleAction(() => {
-    const updatedRentals = rentals.map(r => r.id === updatedRental.id ? updatedRental : r);
-    setRentals(updatedRentals);
-    saveRentals(updatedRentals);
+  const handleUpdateRental = (updatedRental: Rental) => handleAction(async () => {
+    await db.updateRental(updatedRental);
+    setRentals(rentals.map(r => r.id === updatedRental.id ? updatedRental : r));
   });
 
-  const handleDeleteRental = (rentalId: number) => handleAction(() => {
-    const updatedRentals = rentals.filter(r => r.id !== rentalId);
-    setRentals(updatedRentals);
-    saveRentals(updatedRentals);
+  const handleDeleteRental = (rentalId: string) => handleAction(async () => {
+    await db.deleteRental(rentalId);
+    setRentals(rentals.filter(r => r.id !== rentalId));
   });
 
-  const handleCreateRepair = (newRepair: Omit<Repair, 'id'>) => handleAction(() => {
-    const updatedRepairs = [{...newRepair, id: Date.now()}, ...repairs];
-    setRepairs(updatedRepairs);
-    saveRepairs(updatedRepairs);
+  const handleCreateRepair = (newRepair: Omit<Repair, 'id'>) => handleAction(async () => {
+    const createdRepair = await db.createRepair(newRepair);
+    setRepairs([createdRepair, ...repairs]);
   });
 
-  const handleUpdateRepair = (updatedRepair: Repair) => handleAction(() => {
-    const updatedRepairs = repairs.map(r => r.id === updatedRepair.id ? updatedRepair : r);
-    setRepairs(updatedRepairs);
-    saveRepairs(updatedRepairs);
+  const handleUpdateRepair = (updatedRepair: Repair) => handleAction(async () => {
+    await db.updateRepair(updatedRepair);
+    setRepairs(repairs.map(r => r.id === updatedRepair.id ? updatedRepair : r));
   });
 
-  const handleDeleteRepair = (repairId: number) => handleAction(() => {
-    const updatedRepairs = repairs.filter(r => r.id !== repairId);
-    setRepairs(updatedRepairs);
-    saveRepairs(updatedRepairs);
+  const handleDeleteRepair = (repairId: string) => handleAction(async () => {
+    await db.deleteRepair(repairId);
+    setRepairs(repairs.filter(r => r.id !== repairId));
   });
 
-    const handleCreateInventory = (newItem: Omit<InventoryItem, 'id'>) => handleAction(() => {
-        const updatedInventory = [{...newItem, id: Date.now()}, ...inventory];
-        setInventory(updatedInventory);
-        saveInventory(updatedInventory);
-    });
+  const handleCreateInventory = (newItem: Omit<InventoryItem, 'id'>) => handleAction(async () => {
+    const createdItem = await db.createInventory(newItem);
+    setInventory([createdItem, ...inventory]);
+  });
 
-    const handleUpdateInventory = (updatedItem: InventoryItem) => handleAction(() => {
-        const updatedInventory = inventory.map(i => i.id === updatedItem.id ? updatedItem : i);
-        setInventory(updatedInventory);
-        saveInventory(updatedInventory);
-    });
+  const handleUpdateInventory = (updatedItem: InventoryItem) => handleAction(() => internalUpdateInventory(updatedItem));
 
-    const handleDeleteInventory = (itemId: number) => handleAction(() => {
-        const updatedInventory = inventory.filter(i => i.id !== itemId);
-        setInventory(updatedInventory);
-        saveInventory(updatedInventory);
-    });
+  const handleDeleteInventory = (itemId: string) => handleAction(async () => {
+    await db.deleteInventory(itemId);
+    setInventory(inventory.filter(i => i.id !== itemId));
+  });
 
-    const handleCreateSale = (newSale: Omit<Sale, 'id'>) => handleAction(() => {
-        const updatedSales = [{...newSale, id: Date.now()}, ...sales];
-        setSales(updatedSales);
-        saveSales(updatedSales);
+  const handleCreateSale = (newSale: Omit<Sale, 'id'>) => handleAction(async () => {
+    const createdSale = await db.createSale(newSale);
+    setSales(sales => [createdSale, ...sales]);
+    const soldItem = inventory.find(i => i.id === newSale.itemId);
+    if(soldItem) {
+        await internalUpdateInventory({ ...soldItem, status: 'Sold' });
+    }
+  });
 
-        const updatedInventory = inventory.map(item => 
-            item.id === newSale.itemId ? { ...item, status: 'Sold' as const } : item
-        );
-        setInventory(updatedInventory);
-        saveInventory(updatedInventory);
-    });
+  const handleUpdateSale = (updatedSale: Sale) => handleAction(async () => {
+    const originalSale = sales.find(s => s.id === updatedSale.id);
+    await db.updateSale(updatedSale);
+    setSales(sales.map(s => s.id === updatedSale.id ? updatedSale : s));
 
-    const handleUpdateSale = (updatedSale: Sale) => handleAction(() => {
-        const originalSale = sales.find(s => s.id === updatedSale.id);
-        if (!originalSale) return;
+    if (originalSale && originalSale.itemId !== updatedSale.itemId) {
+        const oldItem = inventory.find(i => i.id === originalSale.itemId);
+        const newItem = inventory.find(i => i.id === updatedSale.itemId);
+        if(oldItem) await internalUpdateInventory({ ...oldItem, status: 'Available' });
+        if(newItem) await internalUpdateInventory({ ...newItem, status: 'Sold' });
+    }
+  });
 
-        const updatedSales = sales.map(s => s.id === updatedSale.id ? updatedSale : s);
-        setSales(updatedSales);
-        saveSales(updatedSales);
-        
-        if (originalSale.itemId !== updatedSale.itemId) {
-            const updatedInventory = inventory.map(item => {
-                if (item.id === originalSale.itemId) {
-                    return { ...item, status: 'Available' as const };
-                }
-                if (item.id === updatedSale.itemId) {
-                    return { ...item, status: 'Sold' as const };
-                }
-                return item;
-            });
-            setInventory(updatedInventory);
-            saveInventory(updatedInventory);
-        }
-    });
+  const handleDeleteSale = (saleId: string) => handleAction(async () => {
+    const saleToDelete = sales.find(s => s.id === saleId);
+    await db.deleteSale(saleId);
+    setSales(sales.filter(s => s.id !== saleId));
+    if(saleToDelete) {
+        const item = inventory.find(i => i.id === saleToDelete.itemId);
+        if(item) await internalUpdateInventory({ ...item, status: 'Available' });
+    }
+  });
 
-    const handleDeleteSale = (saleId: number) => handleAction(() => {
-        const saleToDelete = sales.find(s => s.id === saleId);
-        if (!saleToDelete) return;
+  const handleCreateVendor = (newVendor: Omit<Vendor, 'id'>) => handleAction(async () => {
+    const createdVendor = await db.createVendor(newVendor);
+    setVendors([createdVendor, ...vendors]);
+  });
 
-        const updatedSales = sales.filter(s => s.id !== saleId);
-        setSales(updatedSales);
-        saveSales(updatedSales);
-        
-        const updatedInventory = inventory.map(item => 
-            item.id === saleToDelete.itemId ? { ...item, status: 'Available' as const } : item
-        );
-        setInventory(updatedInventory);
-        saveInventory(updatedInventory);
-    });
+  const handleUpdateVendor = (updatedVendor: Vendor) => handleAction(async () => {
+    await db.updateVendor(updatedVendor);
+    setVendors(vendors.map(v => v.id === updatedVendor.id ? updatedVendor : v));
+  });
 
-    const handleCreateVendor = (newVendor: Omit<Vendor, 'id'>) => handleAction(() => {
-        const updatedVendors = [{...newVendor, id: Date.now()}, ...vendors];
-        setVendors(updatedVendors);
-        saveVendors(updatedVendors);
-    });
+  const handleDeleteVendor = (vendorId: string) => handleAction(async () => {
+    await db.deleteVendor(vendorId);
+    setVendors(vendors.filter(v => v.id !== vendorId));
+  });
 
-    const handleUpdateVendor = (updatedVendor: Vendor) => handleAction(() => {
-        const updatedVendors = vendors.map(v => v.id === updatedVendor.id ? updatedVendor : v);
-        setVendors(updatedVendors);
-        saveVendors(updatedVendors);
-    });
-
-    const handleDeleteVendor = (vendorId: number) => handleAction(() => {
-        const updatedVendors = vendors.filter(v => v.id !== vendorId);
-        setVendors(updatedVendors);
-        saveVendors(updatedVendors);
-    });
-
-
-  const handleUpdateSmsSettings = (settings: SmsSettings) => handleAction(() => {
+  const handleUpdateSmsSettings = (settings: SmsSettings) => handleAction(async () => {
+    await db.saveSmsSettings(settings);
     setSmsSettings(settings);
-    saveSmsSettings(settings);
   });
   
-  const handleUpdateAdminKey = (key: string) => handleAction(() => {
+  const handleUpdateAdminKey = (key: string) => handleAction(async () => {
+    await db.saveAdminKey(key);
     setAdminKey(key);
-    saveAdminKey(key);
     showNotification('Admin Registration Key updated successfully!');
   });
 
-  if (isLoading) {
+  if (appLoading) {
     return <Preloader splashLogo={splashLogo} />;
   }
 
   if (!currentUser) {
-    return <Login users={users} onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} adminKey={adminKey} splashLogo={splashLogo} />;
+    return <Login users={users} onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} adminKey={adminKey} splashLogo={splashLogo} isFirebaseConfigured={db.isFirebaseConfigured()} />;
   }
 
   const isAdmin = currentUser.role === 'Admin';
@@ -328,7 +377,6 @@ const App: React.FC = () => {
   const renderView = () => {
     const adminOnlyViews = [AppView.Users, AppView.Settings, AppView.Notifications, AppView.Reports];
     if (!isAdmin && adminOnlyViews.includes(currentView)) {
-        // If a non-admin tries to access an admin view, show dashboard instead
         return <Dashboard contacts={contacts} rentals={rentals} repairs={repairs} users={users} />;
     }
 
@@ -336,15 +384,15 @@ const App: React.FC = () => {
       case AppView.Dashboard:
         return <Dashboard contacts={contacts} rentals={rentals} repairs={repairs} users={users} />;
       case AppView.Inventory:
-        return <Inventory inventory={inventory} vendors={vendors} currentUser={currentUser} onCreateItem={handleCreateInventory} onUpdateItem={handleUpdateInventory} onDeleteItem={handleDeleteInventory} showNotification={showNotification} />;
+        return <Inventory inventory={inventory} vendors={vendors} currentUser={currentUser} onCreateItem={handleCreateInventory} onUpdateItem={handleUpdateInventory} onDeleteItem={handleDeleteInventory} showNotification={showNotification} adminKey={adminKey} />;
       case AppView.SalesLog:
-        return <SalesLog sales={sales} inventory={inventory} currentUser={currentUser} onCreateSale={handleCreateSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} showNotification={showNotification} />;
+        return <SalesLog sales={sales} inventory={inventory} currentUser={currentUser} onCreateSale={handleCreateSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} showNotification={showNotification} adminKey={adminKey} />;
       case AppView.Vendors:
-        return <Vendors vendors={vendors} inventory={inventory} currentUser={currentUser} onCreateVendor={handleCreateVendor} onUpdateVendor={handleUpdateVendor} onDeleteVendor={handleDeleteVendor} showNotification={showNotification} />;
+        return <Vendors vendors={vendors} inventory={inventory} currentUser={currentUser} onCreateVendor={handleCreateVendor} onUpdateVendor={handleUpdateVendor} onDeleteVendor={handleDeleteVendor} showNotification={showNotification} adminKey={adminKey} />;
       case AppView.Users:
-        return <Users users={users} currentUser={currentUser} onCreateUser={handleCreateUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} showNotification={showNotification} />;
+        return <Users users={users} currentUser={currentUser} onCreateUser={handleCreateUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} showNotification={showNotification} adminKey={adminKey} />;
       case AppView.Contacts:
-        return <Contacts contacts={contacts} currentUser={currentUser} onCreateContact={handleCreateContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} showNotification={showNotification} />;
+        return <Contacts contacts={contacts} currentUser={currentUser} onCreateContact={handleCreateContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} showNotification={showNotification} adminKey={adminKey} />;
       case AppView.Settings:
         return <Settings 
                     onUpdateLogo={handleUpdateLogo} 
@@ -358,9 +406,9 @@ const App: React.FC = () => {
                     showNotification={showNotification}
                 />;
       case AppView.Rentals:
-        return <Rentals rentals={rentals} contacts={contacts} currentUser={currentUser} onCreateRental={handleCreateRental} onUpdateRental={handleUpdateRental} onDeleteRental={handleDeleteRental} showNotification={showNotification} />;
+        return <Rentals rentals={rentals} contacts={contacts} currentUser={currentUser} onCreateRental={handleCreateRental} onUpdateRental={handleUpdateRental} onDeleteRental={handleDeleteRental} showNotification={showNotification} adminKey={adminKey} />;
       case AppView.Repairs:
-        return <Repairs repairs={repairs} contacts={contacts} currentUser={currentUser} onCreateRepair={handleCreateRepair} onUpdateRepair={handleUpdateRepair} onDeleteRepair={handleDeleteRepair} showNotification={showNotification} />;
+        return <Repairs repairs={repairs} contacts={contacts} currentUser={currentUser} onCreateRepair={handleCreateRepair} onUpdateRepair={handleUpdateRepair} onDeleteRepair={handleDeleteRepair} showNotification={showNotification} adminKey={adminKey} />;
       case AppView.Notifications:
         return <Notifications contacts={contacts} handleAction={handleAction} smsSettings={smsSettings} showNotification={showNotification} />;
       case AppView.Reports:
@@ -376,6 +424,7 @@ const App: React.FC = () => {
       {isActionLoading && <Spinner />}
       <Sidebar currentView={currentView} setCurrentView={handleViewChange} onLogout={handleLogout} appLogo={appLogo} currentUser={currentUser} />
       <div className="flex-1 flex flex-col overflow-hidden">
+        {!db.isFirebaseConfigured() && <DemoModeBanner />}
         <Header viewName={getViewName(currentView)} user={currentUser} />
         <main className="flex-1 overflow-y-auto bg-gray-50">
           {renderView()}
