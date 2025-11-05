@@ -1,16 +1,17 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, getDoc, Firestore } from 'firebase/firestore';
+import { getApps, initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, getDoc, Firestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { User, Contact, Rental, Repair, SmsSettings, InventoryItem, Sale, Vendor } from '../types';
 import { getTodayDateString } from './dates';
 
 // IMPORTANT: Replace with your actual Firebase configuration
 export const firebaseConfig = {
-  apiKey: "AIzaSyDvTLdwXoVkXmZJqZuV15KZG07dw1cG18",
+  apiKey: "YOUR_API_KEY",
   authDomain: "spincitycrm.firebaseapp.com",
   projectId: "spincitycrm",
   storageBucket: "spincitycrm.firebaseapp.com",
   messagingSenderId: "589728984815",
-  appId: "1:589728984815:web:240625c48b39230a7c351a"
+  appId: "1:589728984815:web:240625c48b39230a7c351a",
+  measurementId: "G-9SVNQ28PPL"
 };
 
 export const isFirebaseConfigured = (): boolean => {
@@ -20,9 +21,19 @@ export const isFirebaseConfigured = (): boolean => {
 let db: Firestore;
 
 if (isFirebaseConfigured()) {
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
+    // Initialize Firebase safely to be idempotent
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
     db = getFirestore(app);
+    enableIndexedDbPersistence(db)
+      .catch((err) => {
+        if (err.code == 'failed-precondition') {
+          // Multiple tabs open, persistence can only be enabled in one tab at a time.
+          console.warn('Firestore persistence failed: Multiple tabs open.');
+        } else if (err.code == 'unimplemented') {
+          // The current browser does not support all of the features required to enable persistence
+          console.warn('Firestore persistence failed: Browser does not support it.');
+        }
+      });
 } else {
     console.warn("Firebase is not configured. Running in Demo Mode. Please update firebaseConfig in utils/storage.ts");
 }
@@ -93,7 +104,10 @@ const fetchData = async <T>(getCol: () => any, lsKey: string, seedData: any[] = 
             const snapshot = await getDocs(col);
             return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as T));
         } catch (e) {
-            console.error(`Failed to load ${col.path} from Firestore`, e);
+            // Suppress the specific offline error, as it's expected when cache is empty.
+            if (!(e instanceof Error && e.message.includes('offline'))) {
+                console.error(`Failed to load ${col.path} from Firestore:`, e instanceof Error ? e.message : String(e));
+            }
             return [];
         }
     } else {
@@ -198,7 +212,10 @@ const loadSetting = async <T>(docId: string, lsKey: string, defaultValue: T): Pr
                 return defaultValue;
             }
         } catch (e) {
-            console.error(`Failed to load setting ${docId}`, e);
+            // Suppress the specific offline error, as it's expected on first offline load.
+            if (!(e instanceof Error && e.message.includes('offline'))) {
+                console.error(`Failed to load setting ${docId}:`, e instanceof Error ? e.message : String(e));
+            }
             return defaultValue;
         }
     } else {
@@ -214,7 +231,7 @@ const saveSetting = async <T>(docId: string, lsKey: string, data: T): Promise<vo
             // Store data under a 'value' field to keep it consistent
             await setDoc(docRef, { value: data }, { merge: true });
         } catch (e) {
-            console.error(`Failed to save setting ${docId}`, e);
+            console.error(`Failed to save setting ${docId}:`, e instanceof Error ? e.message : String(e));
         }
     } else {
         saveToStorage(lsKey, data);

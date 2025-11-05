@@ -72,62 +72,72 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const loadInitialData = async () => {
-        // Load settings first as they are needed for preloader/login
-        setSplashLogo(await db.loadSplashLogo());
-        setAdminKey(await db.loadAdminKey());
+      // Load settings first as they are needed for preloader/login
+      setSplashLogo(await db.loadSplashLogo());
+      setAdminKey(await db.loadAdminKey());
 
-        if (db.isFirebaseConfigured()) {
-            const auth = getAuth();
-            const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-                setIsActionLoading(true);
-                if (firebaseUser) {
-                    const loadedUsers = await db.loadUsers();
-                    setUsers(loadedUsers);
-                    const appUser = loadedUsers.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
-                    setCurrentUser(appUser || null);
-
-                    if (appUser) {
-                        setContacts(await db.loadContacts());
-                        setRentals(await db.loadRentals());
-                        setRepairs(await db.loadRepairs());
-                        setInventory(await db.loadInventory());
-                        setSales(await db.loadSales());
-                        setVendors(await db.loadVendors());
-                        setAppLogo(await db.loadAppLogo());
-                        setSmsSettings(await db.loadSmsSettings());
-                    }
-                } else {
-                    setCurrentUser(null);
-                    setUsers(await db.loadUsers()); // still load users for registration check
-                }
-                setAppLoading(false);
-                setIsActionLoading(false);
-            });
-            return () => unsubscribe();
-        } else {
-            // Demo Mode: Load from localStorage
+      if (db.isFirebaseConfigured()) {
+        const auth = getAuth();
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+          try {
             setIsActionLoading(true);
-            const loadedUsers = await db.loadUsers();
-            setUsers(loadedUsers);
-            const loggedInUser = await db.loadCurrentUser();
-            setCurrentUser(loggedInUser);
+            if (firebaseUser) {
+              const loadedUsers = await db.loadUsers();
+              setUsers(loadedUsers);
+              const appUser = loadedUsers.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
+              setCurrentUser(appUser || null);
 
-            if (loggedInUser) {
-                 setContacts(await db.loadContacts());
-                 setRentals(await db.loadRentals());
-                 setRepairs(await db.loadRepairs());
-                 setInventory(await db.loadInventory());
-                 setSales(await db.loadSales());
-                 setVendors(await db.loadVendors());
-                 setAppLogo(await db.loadAppLogo());
-                 setSmsSettings(await db.loadSmsSettings());
+              if (appUser) {
+                setContacts(await db.loadContacts());
+                setRentals(await db.loadRentals());
+                setRepairs(await db.loadRepairs());
+                setInventory(await db.loadInventory());
+                setSales(await db.loadSales());
+                setVendors(await db.loadVendors());
+                setAppLogo(await db.loadAppLogo());
+                setSmsSettings(await db.loadSmsSettings());
+              }
+            } else {
+              setCurrentUser(null);
+              setUsers(await db.loadUsers()); // still load users for registration check
             }
+          } catch (error) {
+            console.error("Error during auth state change processing:", error instanceof Error ? error.message : String(error));
+            showNotification('Failed to load user data.');
+          } finally {
             setAppLoading(false);
             setIsActionLoading(false);
+          }
+        });
+        return () => unsubscribe();
+      } else {
+        // Demo Mode: Load from localStorage
+        setIsActionLoading(true);
+        const loadedUsers = await db.loadUsers();
+        setUsers(loadedUsers);
+        const loggedInUser = await db.loadCurrentUser();
+        setCurrentUser(loggedInUser);
+
+        if (loggedInUser) {
+          setContacts(await db.loadContacts());
+          setRentals(await db.loadRentals());
+          setRepairs(await db.loadRepairs());
+          setInventory(await db.loadInventory());
+          setSales(await db.loadSales());
+          setVendors(await db.loadVendors());
+          setAppLogo(await db.loadAppLogo());
+          setSmsSettings(await db.loadSmsSettings());
         }
+        setAppLoading(false);
+        setIsActionLoading(false);
+      }
     };
 
-    loadInitialData();
+    loadInitialData().catch(error => {
+        console.error("Failed to load initial app data:", error instanceof Error ? error.message : String(error));
+        showNotification('A critical error occurred while loading the app.');
+        setAppLoading(false); // Ensure app doesn't hang on preloader
+    });
   }, []);
   
   const showNotification = (message: string) => {
@@ -142,7 +152,7 @@ const App: React.FC = () => {
       const result = await action();
       return result;
     } catch (error) {
-      console.error("An error occurred during the action:", error);
+      console.error("An error occurred during the action:", error instanceof Error ? error.message : String(error));
       showNotification('An error occurred. Please try again.');
     } finally {
       setIsActionLoading(false);

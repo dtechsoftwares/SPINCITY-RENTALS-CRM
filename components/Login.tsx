@@ -73,7 +73,8 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
                 setError('Authentication successful, but could not find user profile.');
             }
         } catch (err: any) {
-            setError('Invalid email or password.');
+            console.error("Firebase Login Error:", err);
+            setError(err.message || 'Invalid email or password.');
         } finally {
             setIsSubmitting(false);
         }
@@ -121,10 +122,11 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
             };
             onRegisterSuccess(newUser); 
         } catch (err: any) {
+            console.error("Firebase Registration Error:", err);
             if (err.code === 'auth/email-already-in-use') {
                 setRegError('This email is already registered.');
             } else {
-                setRegError('Failed to register. Please try again.');
+                setRegError(`Registration failed: ${err.message || 'Please check your connection and try again.'}`);
             }
         } finally {
             setIsSubmitting(false);
