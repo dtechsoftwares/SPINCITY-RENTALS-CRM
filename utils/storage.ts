@@ -11,6 +11,7 @@ const RENTALS_KEY = 'spincity_rentals';
 const REPAIRS_KEY = 'spincity_repairs';
 const SMS_SETTINGS_KEY = 'spincity_sms_settings';
 const ADMIN_KEY = 'spincity_admin_key';
+const SPLASH_LOGO_KEY = 'spincity_splash_logo';
 
 
 const defaultUsers: User[] = [
@@ -104,6 +105,28 @@ export const loadAppLogo = (): string | null => {
         return null;
     }
 };
+
+export const saveSplashLogo = (logo: string | null) => {
+    try {
+        if (logo) {
+            localStorage.setItem(SPLASH_LOGO_KEY, logo);
+        } else {
+            localStorage.removeItem(SPLASH_LOGO_KEY);
+        }
+    } catch (e) {
+        console.error("Failed to save splash logo to localStorage", e);
+    }
+};
+
+export const loadSplashLogo = (): string | null => {
+    try {
+        return localStorage.getItem(SPLASH_LOGO_KEY);
+    } catch (e) {
+        console.error("Failed to load splash logo from localStorage", e);
+        return null;
+    }
+};
+
 
 export const loadContacts = (): Contact[] => {
     try {

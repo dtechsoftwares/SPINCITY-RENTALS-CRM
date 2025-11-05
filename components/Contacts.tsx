@@ -131,9 +131,10 @@ interface ContactsProps {
     onCreateContact: (contact: Omit<Contact, 'id'>) => void;
     onUpdateContact: (contact: Contact) => void;
     onDeleteContact: (contactId: number) => void;
+    showNotification: (message: string) => void;
 }
 
-const Contacts: React.FC<ContactsProps> = ({ contacts, onCreateContact, onUpdateContact, onDeleteContact }) => {
+const Contacts: React.FC<ContactsProps> = ({ contacts, onCreateContact, onUpdateContact, onDeleteContact, showNotification }) => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [viewingContact, setViewingContact] = useState<Contact | null>(null);
@@ -176,8 +177,10 @@ const Contacts: React.FC<ContactsProps> = ({ contacts, onCreateContact, onUpdate
 
     if (editingContact) {
         onUpdateContact({ ...editingContact, ...formData });
+        showNotification('Contact updated successfully.');
     } else {
         onCreateContact(formData);
+        showNotification('Contact created successfully.');
     }
     closeFormModal();
   };

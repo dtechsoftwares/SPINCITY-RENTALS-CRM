@@ -97,9 +97,10 @@ interface RentalsProps {
     onCreateRental: (rental: Omit<Rental, 'id'>) => void;
     onUpdateRental: (rental: Rental) => void;
     onDeleteRental: (rentalId: number) => void;
+    showNotification: (message: string) => void;
 }
 
-const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, onCreateRental, onUpdateRental, onDeleteRental }) => {
+const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, onCreateRental, onUpdateRental, onDeleteRental, showNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRental, setEditingRental] = useState<Rental | null>(null);
     const [formData, setFormData] = useState<Omit<Rental, 'id'> & { contactId: number | string }>(emptyRentalForm);
@@ -166,8 +167,10 @@ const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, onCreateRental, on
 
         if (editingRental) {
             onUpdateRental({ ...editingRental, ...submissionData });
+            showNotification('Rental agreement updated successfully.');
         } else {
             onCreateRental(submissionData);
+            showNotification('Rental agreement created successfully.');
         }
         handleCloseModal();
     };

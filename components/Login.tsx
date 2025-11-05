@@ -1,8 +1,8 @@
 
-
 import React, { useState } from 'react';
 import { User } from '../types';
 import { CloseIcon } from './Icons';
+import { defaultLogoBase64 } from '../utils/assets';
 
 // FIX: Make children optional to resolve misleading "missing children" type error.
 const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode, title: string }) => {
@@ -25,15 +25,15 @@ const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose:
   );
 };
 
-
 interface LoginProps {
   users: User[];
   onLogin: (user: User) => void;
   onRegisterSuccess: (user: User) => void;
   adminKey: string;
+  splashLogo: string | null;
 }
 
-const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminKey }) => {
+const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminKey, splashLogo }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -65,18 +65,11 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center">
-      <div className="max-w-md w-full mx-auto">
-        <div className="flex justify-center items-center mb-6 space-x-3">
-            <div className="bg-brand-green p-2 rounded-lg">
-                <svg className="w-10 h-10 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 21v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21m0 0h4.5V3.545M12.75 21h7.5V10.75M2.25 21h1.5m18 0h-18M2.25 9l4.5-1.636M18.75 3l-1.5.545m0 6.205l3 1m-3-1l-3-1m3 1v5.25m-3-5.25v5.25m-3-5.25l3 1m-3-1l-3 1m0 0v5.25m0 0l3 1m-3-1l-3-1" />
-                </svg>
-            </div>
-            <h1 className="text-3xl font-bold text-brand-text">SpinCity CRM</h1>
-        </div>
-        <div className="bg-white p-8 rounded-xl shadow-md border border-gray-200">
-          <h2 className="text-2xl font-bold text-center mb-6 text-brand-text">Login</h2>
+    <div className="min-h-screen bg-brand-green flex flex-col justify-center items-center p-4">
+      <div className="max-w-md w-full mx-auto bg-white p-8 rounded-xl shadow-md border border-gray-200">
+          <div className="mb-6">
+              <img src={splashLogo || defaultLogoBase64} alt="Spin City Rentals Logo" className="w-32 h-32 mx-auto object-contain" />
+          </div>
           {error && <p className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-sm">{error}</p>}
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
@@ -108,7 +101,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
               New here? Register now
             </button>
           </div>
-        </div>
+          <p className="text-center mt-8 text-xs text-gray-400">Powered By: Cicadas IT Solutions</p>
       </div>
       <Modal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} title="Admin Registration">
           <p className="text-gray-600 mb-4">To register the first admin user and set up the system, please enter the Admin Registration Key.</p>

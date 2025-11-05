@@ -41,9 +41,10 @@ const Textarea = ({ label, name, value, onChange, required=false, rows = 5 }: { 
 
 interface NotificationsProps {
     contacts: Contact[];
+    handleAction: (action: () => void) => void;
 }
 
-const Notifications: React.FC<NotificationsProps> = ({ contacts }) => {
+const Notifications: React.FC<NotificationsProps> = ({ contacts, handleAction }) => {
     const [activeTab, setActiveTab] = useState<'sms' | 'email'>('sms');
     
     // SMS state
@@ -56,24 +57,28 @@ const Notifications: React.FC<NotificationsProps> = ({ contacts }) => {
     const [emailBody, setEmailBody] = useState('');
 
     const handleSendSms = () => {
-        if (!smsRecipient || !smsMessage) {
-            alert('Please select a recipient and enter a message.');
-            return;
-        }
-        const contact = contacts.find(c => c.id.toString() === smsRecipient);
-        alert(`Simulating SMS send to ${contact?.fullName} (${contact?.phone}):\n\n${smsMessage}`);
-        setSmsMessage('');
+        handleAction(() => {
+            if (!smsRecipient || !smsMessage) {
+                alert('Please select a recipient and enter a message.');
+                return;
+            }
+            const contact = contacts.find(c => c.id.toString() === smsRecipient);
+            alert(`Simulating SMS send to ${contact?.fullName} (${contact?.phone}):\n\n${smsMessage}`);
+            setSmsMessage('');
+        });
     };
 
     const handleSendEmail = () => {
-        if (!emailRecipient || !emailSubject || !emailBody) {
-            alert('Please select a recipient and enter a subject and body.');
-            return;
-        }
-        const contact = contacts.find(c => c.id.toString() === emailRecipient);
-        alert(`Simulating Email send to ${contact?.fullName} (${contact?.email}):\n\nSubject: ${emailSubject}\n\n${emailBody}`);
-        setEmailSubject('');
-        setEmailBody('');
+        handleAction(() => {
+            if (!emailRecipient || !emailSubject || !emailBody) {
+                alert('Please select a recipient and enter a subject and body.');
+                return;
+            }
+            const contact = contacts.find(c => c.id.toString() === emailRecipient);
+            alert(`Simulating Email send to ${contact?.fullName} (${contact?.email}):\n\nSubject: ${emailSubject}\n\n${emailBody}`);
+            setEmailSubject('');
+            setEmailBody('');
+        });
     };
 
     return (

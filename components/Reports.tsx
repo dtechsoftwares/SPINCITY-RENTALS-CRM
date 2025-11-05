@@ -58,9 +58,10 @@ interface ReportsProps {
     contacts: Contact[];
     rentals: Rental[];
     repairs: Repair[];
+    handleAction: (action: () => void) => void;
 }
 
-const Reports: React.FC<ReportsProps> = ({ contacts, rentals, repairs }) => {
+const Reports: React.FC<ReportsProps> = ({ contacts, rentals, repairs, handleAction }) => {
     const [period, setPeriod] = useState<ReportPeriod>('daily');
 
     const reportData = useMemo<ReportData>(() => {
@@ -99,7 +100,7 @@ const Reports: React.FC<ReportsProps> = ({ contacts, rentals, repairs }) => {
         { label: 'Done Repairs', value: reportData.completedRepairs, color: 'fill-purple-500' },
     ];
     
-    const handleExportCSV = () => {
+    const handleExportCSV = () => handleAction(() => {
         const headers = "Metric,Value\n";
         const rows = chartData.map(d => `${d.label},${d.value}`).join('\n');
         const csvContent = "data:text/csv;charset=utf-8," + headers + rows;
@@ -110,19 +111,19 @@ const Reports: React.FC<ReportsProps> = ({ contacts, rentals, repairs }) => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-    };
+    });
 
-    const handlePrint = () => {
+    const handlePrint = () => handleAction(() => {
         window.print();
-    };
+    });
 
-    const handleEmailReport = () => {
+    const handleEmailReport = () => handleAction(() => {
         const subject = `SpinCity CRM Report: ${period.charAt(0).toUpperCase() + period.slice(1)} - ${new Date().toLocaleDateString()}`;
         const body = `Here is the ${period} report summary:\n\n` +
                      chartData.map(d => `- ${d.label}: ${d.value}`).join('\n') +
                      `\n\nGenerated from SpinCity CRM.`;
         window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    };
+    });
 
     const PeriodButton = ({ value, label }: { value: ReportPeriod, label: string }) => (
         <button

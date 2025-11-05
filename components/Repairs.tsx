@@ -155,9 +155,10 @@ interface RepairsProps {
     onCreateRepair: (repair: Omit<Repair, 'id'>) => void;
     onUpdateRepair: (repair: Repair) => void;
     onDeleteRepair: (repairId: number) => void;
+    showNotification: (message: string) => void;
 }
 
-const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, onCreateRepair, onUpdateRepair, onDeleteRepair }) => {
+const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, onCreateRepair, onUpdateRepair, onDeleteRepair, showNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRepair, setEditingRepair] = useState<Repair | null>(null);
     const [viewingRepair, setViewingRepair] = useState<Repair | null>(null);
@@ -269,8 +270,10 @@ const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, onCreateRepair, on
 
         if (editingRepair) {
             onUpdateRepair({ ...editingRepair, ...submissionData });
+            showNotification('Repair request updated successfully.');
         } else {
             onCreateRepair(submissionData);
+            showNotification('Repair request created successfully.');
         }
         handleCloseModal();
     };

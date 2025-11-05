@@ -69,9 +69,10 @@ interface UsersProps {
     onCreateUser: (user: Omit<User, 'id'>) => void;
     onUpdateUser: (user: User) => void;
     onDeleteUser: (userId: number) => void;
+    showNotification: (message: string) => void;
 }
 
-const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdateUser, onDeleteUser }) => {
+const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdateUser, onDeleteUser, showNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [formData, setFormData] = useState<Partial<User>>({});
@@ -140,12 +141,14 @@ const Users: React.FC<UsersProps> = ({ users, currentUser, onCreateUser, onUpdat
         }
         if (editingUser) {
             onUpdateUser({ ...editingUser, ...formData, password: formData.password || undefined });
+            showNotification('User updated successfully.');
         } else {
             if (!formData.password) {
                  alert('Password is required for new users.');
                  return;
             }
             onCreateUser(formData as Omit<User, 'id'>);
+            showNotification('User created successfully.');
         }
         handleCloseModal();
     };
