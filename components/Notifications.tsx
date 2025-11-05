@@ -1,7 +1,7 @@
 
 
 import React, { useState } from 'react';
-import { Contact } from '../types';
+import { Contact, SmsSettings } from '../types';
 
 // FIX: Made `children` optional to resolve misleading "missing children" type error.
 const TabButton = ({ isActive, onClick, children }: { isActive: boolean, onClick: () => void, children?: React.ReactNode }) => (
@@ -41,10 +41,12 @@ const Textarea = ({ label, name, value, onChange, required=false, rows = 5 }: { 
 
 interface NotificationsProps {
     contacts: Contact[];
-    handleAction: (action: () => void) => void;
+    handleAction: (action: () => void | Promise<void>) => void;
+    smsSettings: SmsSettings;
+    showNotification: (message: string) => void;
 }
 
-const Notifications: React.FC<NotificationsProps> = ({ contacts, handleAction }) => {
+const Notifications: React.FC<NotificationsProps> = ({ contacts, handleAction, smsSettings, showNotification }) => {
     const [activeTab, setActiveTab] = useState<'sms' | 'email'>('sms');
     
     // SMS state
@@ -57,14 +59,60 @@ const Notifications: React.FC<NotificationsProps> = ({ contacts, handleAction })
     const [emailBody, setEmailBody] = useState('');
 
     const handleSendSms = () => {
-        handleAction(() => {
+        handleAction(async () => {
             if (!smsRecipient || !smsMessage) {
-                alert('Please select a recipient and enter a message.');
+                showNotification('Please select a recipient and enter a message.');
                 return;
             }
+            if (!smsSettings.apiKey || !smsSettings.senderId || !smsSettings.endpointUrl) {
+                showNotification('SMS Gateway is not configured. Please check Settings.');
+                return;
+            }
+    
             const contact = contacts.find(c => c.id.toString() === smsRecipient);
-            alert(`Simulating SMS send to ${contact?.fullName} (${contact?.phone}):\n\n${smsMessage}`);
-            setSmsMessage('');
+            if (!contact) {
+                showNotification('Selected contact not found.');
+                return;
+            }
+            
+            const body = new URLSearchParams();
+            body.append('text', smsMessage);
+            body.append('type', '0');
+            body.append('sender', smsSettings.senderId);
+            body.append('destinations', contact.phone.replace(/\D/g, ''));
+    
+            try {
+                const response = await fetch(smsSettings.endpointUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'application/json',
+                        'Authorization': `key ${smsSettings.apiKey}`
+                    },
+                    body: body
+                });
+    
+                const resultText = await response.text();
+                
+                if (!response.ok) {
+                    throw new Error(resultText || `HTTP error! status: ${response.status}`);
+                }
+
+                const result = JSON.parse(resultText);
+                
+                // From the docs, handshake.id === 0 is success
+                if (result.handshake && result.handshake.id === 0) {
+                    showNotification(`SMS sent successfully to ${contact.fullName}!`);
+                    setSmsMessage(''); // Clear message on success
+                } else {
+                    const errorMessage = result.handshake?.label || 'An unknown error occurred.';
+                    showNotification(`Failed to send SMS: ${errorMessage}`);
+                }
+    
+            } catch (error: any) {
+                console.error('SMS send error:', error);
+                showNotification(`An error occurred: ${error.message}`);
+            }
         });
     };
 

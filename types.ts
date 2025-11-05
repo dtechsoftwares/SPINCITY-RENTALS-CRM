@@ -1,14 +1,17 @@
 
 
+
 export enum AppView {
   Dashboard,
   Inventory,
   Contacts,
   Rentals,
+  SalesLog,
   Repairs,
   Users,
   Notifications,
   Reports,
+  Vendors,
   Settings,
 }
 
@@ -155,36 +158,57 @@ export interface Repair {
 }
 
 export interface SmsSettings {
-    login: string;
-    password?: string;
-    domain: string;
-    protocol: 'HTTPS' | 'HTTP';
-    port: string;
+    apiKey: string;
+    senderId: string;
+    endpointUrl: string;
+}
+
+export interface Vendor {
+    id: number;
+    vendorId: string;
+    vendorName: string;
+    contactPerson: string;
+    phone: string;
+    email: string;
+    address: string;
+    website?: string;
+    notes?: string;
 }
 
 // Inventory Types
-export const InventoryVendors = ['GE Appliances', 'Whirlpool Corp', 'Samsung Electronics', 'LG Electronics'] as const;
-export type InventoryVendor = typeof InventoryVendors[number];
-
 export const InventoryItemTypes = ['Washer', 'Dryer', 'Electric Stove', 'Refrigerator', 'Washer/Dryer Combo'] as const;
 export type InventoryItemType = typeof InventoryItemTypes[number];
 
 export const InventoryConditions = ['New', 'Used', 'Refurbished'] as const;
 export type InventoryCondition = typeof InventoryConditions[number];
 
-export const InventoryStatuses = ['Available', 'Rented', 'In Repair', 'Decommissioned'] as const;
+export const InventoryStatuses = ['Available', 'Rented', 'In Repair', 'Sold', 'Decommissioned'] as const;
 export type InventoryStatus = typeof InventoryStatuses[number];
 
 export interface InventoryItem {
     id: number;
     purchaseId: string;
     purchaseDate: string; // YYYY-MM-DD
-    vendor: InventoryVendor;
+    vendor: string;
     itemType: InventoryItemType;
     makeModel: string;
     serialNumber: string;
     condition: InventoryCondition;
     purchaseCost: number;
     status: InventoryStatus;
+    notes?: string;
+}
+
+export interface Sale {
+    id: number;
+    saleId: string;
+    saleDate: string; // YYYY-MM-DD
+    itemId: number; // links to InventoryItem id
+    salePrice: number;
+    buyerName: string;
+    buyerContact: string;
+    buyerEmail: string;
+    buyerAddress: string;
+    billOfSaleLink: string;
     notes?: string;
 }

@@ -1,6 +1,6 @@
 
 
-import { User, Contact, Rental, Repair, SmsSettings, InventoryItem } from '../types';
+import { User, Contact, Rental, Repair, SmsSettings, InventoryItem, Sale, Vendor } from '../types';
 import { getTodayDateString } from './dates';
 
 const USERS_KEY = 'spincity_users';
@@ -10,13 +10,14 @@ const CONTACTS_KEY = 'spincity_contacts';
 const RENTALS_KEY = 'spincity_rentals';
 const REPAIRS_KEY = 'spincity_repairs';
 const INVENTORY_KEY = 'spincity_inventory';
+const SALES_KEY = 'spincity_sales';
+const VENDORS_KEY = 'spincity_vendors';
 const SMS_SETTINGS_KEY = 'spincity_sms_settings';
 const ADMIN_KEY = 'spincity_admin_key';
 const SPLASH_LOGO_KEY = 'spincity_splash_logo';
 
 
 const defaultUsers: User[] = [
-    { id: 1, name: 'John Doe', email: 'user@spincity.com', password: 'user', role: 'User', avatar: 'https://picsum.photos/seed/user/40/40' },
     { id: 2, name: 'Admin User', email: 'admin@spincity.com', password: 'admin', role: 'Admin', avatar: 'https://picsum.photos/seed/admin/40/40' },
 ];
 
@@ -24,12 +25,12 @@ const defaultContacts: Contact[] = [];
 const defaultRentals: Rental[] = [];
 const defaultRepairs: Repair[] = [];
 const defaultInventory: InventoryItem[] = [];
+const defaultSales: Sale[] = [];
+const defaultVendors: Vendor[] = [];
 const defaultSmsSettings: SmsSettings = {
-    login: 'your-username',
-    password: '',
-    domain: 'smsonlinegh.com',
-    protocol: 'HTTPS',
-    port: '443',
+    apiKey: 'ae124c42ccedc3deea464278c208c7aa2aaac458f1d09f1919b047140c76cb87',
+    senderId: 'SpinCity',
+    endpointUrl: 'https://api.smsonlinegh.com/v5/message/sms/send',
 };
 const defaultAdminKey = 'admin';
 
@@ -205,6 +206,42 @@ export const saveInventory = (inventory: InventoryItem[]) => {
     }
 };
 
+export const loadSales = (): Sale[] => {
+    try {
+        const salesJson = localStorage.getItem(SALES_KEY);
+        return salesJson ? JSON.parse(salesJson) : defaultSales;
+    } catch (e) {
+        console.error("Failed to load sales from localStorage", e);
+        return defaultSales;
+    }
+};
+
+export const saveSales = (sales: Sale[]) => {
+    try {
+        localStorage.setItem(SALES_KEY, JSON.stringify(sales));
+    } catch (e) {
+        console.error("Failed to save sales to localStorage", e);
+    }
+};
+
+export const loadVendors = (): Vendor[] => {
+    try {
+        const vendorsJson = localStorage.getItem(VENDORS_KEY);
+        return vendorsJson ? JSON.parse(vendorsJson) : defaultVendors;
+    } catch (e) {
+        console.error("Failed to load vendors from localStorage", e);
+        return defaultVendors;
+    }
+};
+
+export const saveVendors = (vendors: Vendor[]) => {
+    try {
+        localStorage.setItem(VENDORS_KEY, JSON.stringify(vendors));
+    } catch (e) {
+        console.error("Failed to save vendors to localStorage", e);
+    }
+};
+
 
 export const loadSmsSettings = (): SmsSettings => {
     try {
@@ -213,7 +250,13 @@ export const loadSmsSettings = (): SmsSettings => {
             saveSmsSettings(defaultSmsSettings);
             return defaultSmsSettings;
         }
-        return JSON.parse(settingsJson);
+        const parsed = JSON.parse(settingsJson);
+        // If it's not the new format (doesn't have apiKey), reset to default.
+        if (typeof parsed.apiKey === 'undefined') {
+            saveSmsSettings(defaultSmsSettings);
+            return defaultSmsSettings;
+        }
+        return parsed;
     } catch (e) {
         console.error("Failed to load SMS settings from localStorage", e);
         return defaultSmsSettings;

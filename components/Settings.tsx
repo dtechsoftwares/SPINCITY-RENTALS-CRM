@@ -83,6 +83,11 @@ const Settings: React.FC<SettingsProps> = ({
 
     const [localSmsSettings, setLocalSmsSettings] = useState<SmsSettings>(smsSettings);
     const [localAdminKey, setLocalAdminKey] = useState(adminKey);
+    
+    const [senderIds, setSenderIds] = useState<string[]>(smsSettings.senderId ? [smsSettings.senderId] : []);
+    const [isSenderIdLoading, setIsSenderIdLoading] = useState(false);
+    const [isTestingConnection, setIsTestingConnection] = useState(false);
+
 
     useEffect(() => {
         setLocalSmsSettings(smsSettings);
@@ -147,6 +152,64 @@ const Settings: React.FC<SettingsProps> = ({
         const { name, value } = e.target;
         setLocalSmsSettings(prev => ({...prev, [name]: value}));
     };
+    
+    const handleFetchSenderIds = async () => {
+        if (!localSmsSettings.apiKey) {
+            showNotification('Please enter your API Key first.');
+            return;
+        }
+        setIsSenderIdLoading(true);
+        try {
+            // This is a MOCK API call. The user needs to replace with the actual endpoint if available.
+            // The smsonlinegh.com docs do not clearly specify an endpoint for listing sender IDs.
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            const mockSenderIds = ['SpinCity', 'Support', 'Alerts']; // Mocked data
+            setSenderIds(mockSenderIds);
+            
+            // If current senderId is not in the new list, select the first one.
+            if (!mockSenderIds.includes(localSmsSettings.senderId)) {
+                setLocalSmsSettings(prev => ({ ...prev, senderId: mockSenderIds[0] || '' }));
+            }
+            showNotification('Sender IDs loaded successfully.');
+        } catch (error) {
+            console.error("Failed to fetch sender IDs", error);
+            showNotification('Failed to load Sender IDs.');
+        } finally {
+            setIsSenderIdLoading(false);
+        }
+    };
+
+    const handleTestConnection = async () => {
+        if (!localSmsSettings.apiKey) {
+            showNotification('Please enter an API Key to test the connection.');
+            return;
+        }
+        setIsTestingConnection(true);
+        try {
+            const response = await fetch('https://api.smsonlinegh.com/v5/report/balance', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Accept': 'application/json',
+                    'Authorization': `key ${localSmsSettings.apiKey}`
+                }
+            });
+
+            const result = await response.json();
+            
+            if (response.ok && result.handshake?.id === 0) {
+                const balance = result.data?.balance || 'N/A';
+                showNotification(`Connection successful! Balance: ${balance} credits.`);
+            } else {
+                throw new Error(result.handshake?.label || 'Invalid API Key or connection failed.');
+            }
+        } catch (error: any) {
+            showNotification(`Connection failed: ${error.message}`);
+        } finally {
+            setIsTestingConnection(false);
+        }
+    };
+
 
     const handleSaveSmsSettings = () => {
         onUpdateSmsSettings(localSmsSettings);
@@ -227,18 +290,44 @@ const Settings: React.FC<SettingsProps> = ({
                 <section>
                     <h2 className="text-2xl font-bold border-b border-gray-200 pb-2 mb-6">SMS Gateway Configuration</h2>
                     <div className="space-y-6 bg-gray-50 p-6 rounded-lg border border-gray-200">
-                        <InputField label="Login" value={localSmsSettings.login} onChange={handleSmsSettingsChange} name="login" />
-                        <InputField label="Password" type="password" value={localSmsSettings.password || ''} onChange={handleSmsSettingsChange} name="password" />
-                        <InputField label="Website Domain (no www)" value={localSmsSettings.domain} onChange={handleSmsSettingsChange} name="domain" />
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                           <div>
-                                <label className="block text-lg font-semibold text-brand-text mb-1">Connection Protocol</label>
-                                <select name="protocol" value={localSmsSettings.protocol} onChange={handleSmsSettingsChange} className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-green">
-                                    <option>HTTPS</option>
-                                    <option>HTTP</option>
+                        <InputField 
+                            label="API Key" 
+                            description="Your API Key from smsonlinegh.com"
+                            type="password" 
+                            value={localSmsSettings.apiKey || ''} 
+                            onChange={handleSmsSettingsChange} 
+                            name="apiKey" />
+
+                        <div>
+                            <label className="block text-lg font-semibold text-brand-text mb-1">Sender ID</label>
+                            <p className="text-sm text-gray-500 mb-2">The name that appears as the sender (must be approved).</p>
+                            <div className="flex items-center space-x-2">
+                                <select 
+                                    name="senderId" 
+                                    value={localSmsSettings.senderId || ''} 
+                                    onChange={handleSmsSettingsChange}
+                                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-green"
+                                >
+                                    {senderIds.length === 0 && <option value="">Enter API Key to load IDs</option>}
+                                    {senderIds.map(id => <option key={id} value={id}>{id}</option>)}
                                 </select>
+                                <button onClick={handleFetchSenderIds} disabled={isSenderIdLoading} className="bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 disabled:bg-gray-400">
+                                    {isSenderIdLoading ? 'Loading...' : 'Load Sender IDs'}
+                                </button>
                             </div>
-                           <InputField label="Connection Port" value={localSmsSettings.port} onChange={handleSmsSettingsChange} name="port" />
+                        </div>
+
+                        <InputField 
+                            label="API Endpoint URL" 
+                            description="The full URL for the SMS send endpoint."
+                            value={localSmsSettings.endpointUrl || ''} 
+                            onChange={handleSmsSettingsChange} 
+                            name="endpointUrl" />
+                        
+                        <div className="pt-2">
+                             <button onClick={handleTestConnection} disabled={isTestingConnection} className="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 disabled:bg-blue-300">
+                                {isTestingConnection ? 'Testing...' : 'Test Connection'}
+                            </button>
                         </div>
                     </div>
                     <div className="flex justify-end mt-6">

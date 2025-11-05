@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { AppView, User } from '../types';
-import { DashboardIcon, ContactsIcon, RentalsIcon, RepairsIcon, UsersIcon, SettingsIcon, LogoutIcon, NotificationsIcon, ReportsIcon, InventoryIcon } from './Icons';
+import { DashboardIcon, ContactsIcon, RentalsIcon, RepairsIcon, UsersIcon, SettingsIcon, LogoutIcon, NotificationsIcon, ReportsIcon, InventoryIcon, SalesLogIcon, VendorsIcon } from './Icons';
 
 interface SidebarProps {
   currentView: AppView;
@@ -20,9 +20,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout
     { view: AppView.Inventory, icon: InventoryIcon, label: 'Inventory', adminOnly: false },
     { view: AppView.Contacts, icon: ContactsIcon, label: 'Contacts', adminOnly: false },
     { view: AppView.Rentals, icon: RentalsIcon, label: 'Rentals', adminOnly: false },
+    { view: AppView.SalesLog, icon: SalesLogIcon, label: 'Sales Log', adminOnly: false },
     { view: AppView.Repairs, icon: RepairsIcon, label: 'Repairs', adminOnly: false },
-    { view: AppView.Notifications, icon: NotificationsIcon, label: 'Notifications', adminOnly: true },
+    { view: AppView.Vendors, icon: VendorsIcon, label: 'Vendors', adminOnly: false },
     { view: AppView.Reports, icon: ReportsIcon, label: 'Reports', adminOnly: true },
+    { view: AppView.Notifications, icon: NotificationsIcon, label: 'Notifications', adminOnly: true },
     { view: AppView.Users, icon: UsersIcon, label: 'Users', adminOnly: true },
     { view: AppView.Settings, icon: SettingsIcon, label: 'Settings', adminOnly: true },
   ];

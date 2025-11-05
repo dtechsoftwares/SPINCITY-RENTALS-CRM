@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { InventoryItem, User, InventoryVendors, InventoryItemTypes, InventoryConditions, InventoryStatuses, InventoryVendor, InventoryItemType, InventoryCondition, InventoryStatus } from '../types';
+import { InventoryItem, User, Vendor, InventoryItemTypes, InventoryConditions, InventoryStatuses, InventoryItemType, InventoryCondition, InventoryStatus } from '../types';
 import { CloseIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
 
@@ -47,7 +48,7 @@ const Textarea = ({ label, name, value, onChange, placeholder, rows=4 }: { label
 const emptyItemForm: Omit<InventoryItem, 'id'> = {
     purchaseId: '',
     purchaseDate: getTodayDateString(),
-    vendor: 'GE Appliances',
+    vendor: '',
     itemType: 'Washer',
     makeModel: '',
     serialNumber: '',
@@ -59,6 +60,7 @@ const emptyItemForm: Omit<InventoryItem, 'id'> = {
 
 interface InventoryProps {
     inventory: InventoryItem[];
+    vendors: Vendor[];
     currentUser: User;
     onCreateItem: (item: Omit<InventoryItem, 'id'>) => void;
     onUpdateItem: (item: InventoryItem) => void;
@@ -66,15 +68,22 @@ interface InventoryProps {
     showNotification: (message: string) => void;
 }
 
-const Inventory: React.FC<InventoryProps> = ({ inventory, currentUser, onCreateItem, onUpdateItem, onDeleteItem, showNotification }) => {
+const Inventory: React.FC<InventoryProps> = ({ inventory, vendors, currentUser, onCreateItem, onUpdateItem, onDeleteItem, showNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [formData, setFormData] = useState<Omit<InventoryItem, 'id'>>(emptyItemForm);
     const isAdmin = currentUser.role === 'Admin';
 
     useEffect(() => {
-        setFormData(editingItem ? editingItem : emptyItemForm);
-    }, [editingItem]);
+        if (editingItem) {
+            setFormData(editingItem);
+        } else {
+             setFormData({
+                ...emptyItemForm,
+                vendor: vendors[0]?.vendorName || ''
+            });
+        }
+    }, [editingItem, vendors]);
     
     const handleOpenModal = (item: InventoryItem | null) => {
         setEditingItem(item);
@@ -118,8 +127,9 @@ const Inventory: React.FC<InventoryProps> = ({ inventory, currentUser, onCreateI
         'Available': 'bg-green-100 text-green-700',
         'Rented': 'bg-blue-100 text-blue-700',
         'In Repair': 'bg-yellow-100 text-yellow-700',
+        'Sold': 'bg-red-100 text-red-700',
         'Decommissioned': 'bg-gray-100 text-gray-700',
-    }[status]);
+    }[status] || 'bg-gray-100 text-gray-700');
 
     return (
         <div className="p-8 text-brand-text">
@@ -174,7 +184,8 @@ const Inventory: React.FC<InventoryProps> = ({ inventory, currentUser, onCreateI
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Select label="Vendor" name="vendor" value={formData.vendor} onChange={handleInputChange}>
-                            {InventoryVendors.map(v => <option key={v} value={v}>{v}</option>)}
+                            <option value="">-- Select Vendor --</option>
+                            {vendors.map(v => <option key={v.id} value={v.vendorName}>{v.vendorName}</option>)}
                         </Select>
                         <Select label="Item Type" name="itemType" value={formData.itemType} onChange={handleInputChange}>
                             {InventoryItemTypes.map(t => <option key={t} value={t}>{t}</option>)}

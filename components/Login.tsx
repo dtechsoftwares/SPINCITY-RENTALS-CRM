@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { CloseIcon } from './Icons';
 import { defaultLogoBase64 } from '../utils/assets';
@@ -40,6 +41,44 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [enteredAdminKey, setEnteredAdminKey] = useState('');
   const [registerError, setRegisterError] = useState('');
+  const [isVerifyingKey, setIsVerifyingKey] = useState(false);
+
+  useEffect(() => {
+    if (!isRegisterModalOpen) {
+        setEnteredAdminKey('');
+        setRegisterError('');
+        setIsVerifyingKey(false);
+    }
+  }, [isRegisterModalOpen]);
+
+  const performRegistration = () => {
+    const adminUser = users.find(u => u.email === 'admin@spincity.com');
+    if (adminUser) {
+        onRegisterSuccess(adminUser);
+    } else {
+        setRegisterError('Default admin user not found. Please contact support.');
+    }
+  };
+
+  useEffect(() => {
+    if (enteredAdminKey.length > 0) {
+      setRegisterError(''); // Clear previous error on new input
+      const timer = setTimeout(() => {
+        setIsVerifyingKey(true);
+        // Simulate network delay for verification
+        setTimeout(() => {
+          if (enteredAdminKey === adminKey) {
+            performRegistration();
+          } else {
+            setRegisterError('Invalid Admin Registration Key.');
+          }
+          setIsVerifyingKey(false);
+        }, 1000);
+      }, 700); // Debounce typing
+      return () => clearTimeout(timer);
+    }
+  }, [enteredAdminKey, adminKey]);
+
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,19 +90,6 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
     }
   };
   
-  const handleRegister = () => {
-    if (enteredAdminKey === adminKey) {
-        const adminUser = users.find(u => u.email === 'admin@spincity.com');
-        if (adminUser) {
-            onRegisterSuccess(adminUser);
-        } else {
-            setRegisterError('Default admin user not found. Please contact support.');
-        }
-    } else {
-        setRegisterError('Invalid Admin Registration Key.');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-brand-green flex flex-col justify-center items-center p-4">
       <div className="max-w-md w-full mx-auto bg-white p-8 rounded-xl shadow-md border border-gray-200">
@@ -109,11 +135,25 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
           <div className="space-y-4">
               <div>
                   <label className="block text-sm font-medium text-gray-600 mb-1">Admin Registration Key</label>
-                  <input type="password" value={enteredAdminKey} onChange={e => setEnteredAdminKey(e.target.value)} className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-green" />
+                  <div className="relative">
+                    <input 
+                        type="password" 
+                        value={enteredAdminKey} 
+                        onChange={e => setEnteredAdminKey(e.target.value)} 
+                        className="w-full bg-gray-100 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-green" 
+                    />
+                    {isVerifyingKey && (
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                            <div className="w-5 h-5 border-2 border-t-2 border-gray-200 border-t-brand-green rounded-full animate-spin"></div>
+                        </div>
+                    )}
+                  </div>
               </div>
               <div className="flex justify-end space-x-4 pt-2">
                 <button onClick={() => setIsRegisterModalOpen(false)} className="bg-gray-200 text-gray-700 font-bold py-2 px-6 rounded-lg hover:bg-gray-300">Cancel</button>
-                <button onClick={handleRegister} className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-green-dark">Verify &amp; Login</button>
+                <button disabled className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg opacity-50 cursor-not-allowed">
+                    Auto-verifying...
+                </button>
               </div>
           </div>
       </Modal>

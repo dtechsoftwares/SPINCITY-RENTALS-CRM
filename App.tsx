@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { AppView, User, Contact, Rental, Repair, SmsSettings, InventoryItem } from './types';
+import { AppView, User, Contact, Rental, Repair, SmsSettings, InventoryItem, Sale, Vendor } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Users from './components/Users';
@@ -10,11 +10,13 @@ import Settings from './components/Settings';
 import Rentals from './components/Rentals';
 import Repairs from './components/Repairs';
 import Inventory from './components/Inventory';
+import SalesLog from './components/SalesLog';
+import Vendors from './components/Vendors';
 import Preloader from './components/Preloader';
 import Login from './components/Login';
 import Notifications from './components/Notifications';
 import Reports from './components/Reports';
-import { loadUsers, saveUsers, loadCurrentUser, saveCurrentUser, clearCurrentUser, saveAppLogo, loadAppLogo, loadContacts, saveContacts, loadRentals, saveRentals, loadRepairs, saveRepairs, loadSmsSettings, saveSmsSettings, loadAdminKey, saveAdminKey, loadSplashLogo, saveSplashLogo, loadInventory, saveInventory } from './utils/storage';
+import { loadUsers, saveUsers, loadCurrentUser, saveCurrentUser, clearCurrentUser, saveAppLogo, loadAppLogo, loadContacts, saveContacts, loadRentals, saveRentals, loadRepairs, saveRepairs, loadSmsSettings, saveSmsSettings, loadAdminKey, saveAdminKey, loadSplashLogo, saveSplashLogo, loadInventory, saveInventory, loadSales, saveSales, loadVendors, saveVendors } from './utils/storage';
 import { getTodayDateString } from './utils/dates';
 import Spinner from './components/Spinner';
 import Notification from './components/Notification';
@@ -51,6 +53,8 @@ const App: React.FC = () => {
   const [rentals, setRentals] = useState<Rental[]>(loadRentals());
   const [repairs, setRepairs] = useState<Repair[]>(loadRepairs());
   const [inventory, setInventory] = useState<InventoryItem[]>(loadInventory());
+  const [sales, setSales] = useState<Sale[]>(loadSales());
+  const [vendors, setVendors] = useState<Vendor[]>(loadVendors());
   const [appLogo, setAppLogo] = useState<string | null>(loadAppLogo());
   const [splashLogo, setSplashLogo] = useState<string | null>(loadSplashLogo());
   const [smsSettings, setSmsSettings] = useState<SmsSettings>(loadSmsSettings());
@@ -95,6 +99,7 @@ const App: React.FC = () => {
     setCurrentUser(user);
     saveCurrentUser(user);
     handleViewChange(AppView.Dashboard);
+    showNotification(`Welcome, ${user.name}!`);
   });
   
   const handleRegisterSuccess = (user: User) => handleAction(() => {
@@ -213,6 +218,75 @@ const App: React.FC = () => {
         saveInventory(updatedInventory);
     });
 
+    const handleCreateSale = (newSale: Omit<Sale, 'id'>) => handleAction(() => {
+        const updatedSales = [{...newSale, id: Date.now()}, ...sales];
+        setSales(updatedSales);
+        saveSales(updatedSales);
+
+        const updatedInventory = inventory.map(item => 
+            item.id === newSale.itemId ? { ...item, status: 'Sold' as const } : item
+        );
+        setInventory(updatedInventory);
+        saveInventory(updatedInventory);
+    });
+
+    const handleUpdateSale = (updatedSale: Sale) => handleAction(() => {
+        const originalSale = sales.find(s => s.id === updatedSale.id);
+        if (!originalSale) return;
+
+        const updatedSales = sales.map(s => s.id === updatedSale.id ? updatedSale : s);
+        setSales(updatedSales);
+        saveSales(updatedSales);
+        
+        if (originalSale.itemId !== updatedSale.itemId) {
+            const updatedInventory = inventory.map(item => {
+                if (item.id === originalSale.itemId) {
+                    return { ...item, status: 'Available' as const };
+                }
+                if (item.id === updatedSale.itemId) {
+                    return { ...item, status: 'Sold' as const };
+                }
+                return item;
+            });
+            setInventory(updatedInventory);
+            saveInventory(updatedInventory);
+        }
+    });
+
+    const handleDeleteSale = (saleId: number) => handleAction(() => {
+        const saleToDelete = sales.find(s => s.id === saleId);
+        if (!saleToDelete) return;
+
+        const updatedSales = sales.filter(s => s.id !== saleId);
+        setSales(updatedSales);
+        saveSales(updatedSales);
+        
+        const updatedInventory = inventory.map(item => 
+            item.id === saleToDelete.itemId ? { ...item, status: 'Available' as const } : item
+        );
+        setInventory(updatedInventory);
+        saveInventory(updatedInventory);
+    });
+
+    const handleCreateVendor = (newVendor: Omit<Vendor, 'id'>) => handleAction(() => {
+        const updatedVendors = [{...newVendor, id: Date.now()}, ...vendors];
+        setVendors(updatedVendors);
+        saveVendors(updatedVendors);
+    });
+
+    const handleUpdateVendor = (updatedVendor: Vendor) => handleAction(() => {
+        const updatedVendors = vendors.map(v => v.id === updatedVendor.id ? updatedVendor : v);
+        setVendors(updatedVendors);
+        saveVendors(updatedVendors);
+    });
+
+    const handleDeleteVendor = (vendorId: number) => handleAction(() => {
+        const updatedVendors = vendors.filter(v => v.id !== vendorId);
+        setVendors(updatedVendors);
+        saveVendors(updatedVendors);
+    });
+
+
   const handleUpdateSmsSettings = (settings: SmsSettings) => handleAction(() => {
     setSmsSettings(settings);
     saveSmsSettings(settings);
@@ -240,9 +314,11 @@ const App: React.FC = () => {
       case AppView.Inventory: return 'Inventory Management';
       case AppView.Contacts: return 'Contacts';
       case AppView.Rentals: return 'Rentals';
+      case AppView.SalesLog: return 'Sales Log';
       case AppView.Repairs: return 'Repairs';
       case AppView.Notifications: return 'Notifications';
       case AppView.Reports: return 'Reports';
+      case AppView.Vendors: return 'Vendor Management';
       case AppView.Users: return 'Users';
       case AppView.Settings: return 'Settings';
       default: return 'Dashboard';
@@ -253,14 +329,18 @@ const App: React.FC = () => {
     const adminOnlyViews = [AppView.Users, AppView.Settings, AppView.Notifications, AppView.Reports];
     if (!isAdmin && adminOnlyViews.includes(currentView)) {
         // If a non-admin tries to access an admin view, show dashboard instead
-        return <Dashboard />;
+        return <Dashboard contacts={contacts} rentals={rentals} repairs={repairs} users={users} />;
     }
 
     switch (currentView) {
       case AppView.Dashboard:
-        return <Dashboard />;
+        return <Dashboard contacts={contacts} rentals={rentals} repairs={repairs} users={users} />;
       case AppView.Inventory:
-        return <Inventory inventory={inventory} currentUser={currentUser} onCreateItem={handleCreateInventory} onUpdateItem={handleUpdateInventory} onDeleteItem={handleDeleteInventory} showNotification={showNotification} />;
+        return <Inventory inventory={inventory} vendors={vendors} currentUser={currentUser} onCreateItem={handleCreateInventory} onUpdateItem={handleUpdateInventory} onDeleteItem={handleDeleteInventory} showNotification={showNotification} />;
+      case AppView.SalesLog:
+        return <SalesLog sales={sales} inventory={inventory} currentUser={currentUser} onCreateSale={handleCreateSale} onUpdateSale={handleUpdateSale} onDeleteSale={handleDeleteSale} showNotification={showNotification} />;
+      case AppView.Vendors:
+        return <Vendors vendors={vendors} inventory={inventory} currentUser={currentUser} onCreateVendor={handleCreateVendor} onUpdateVendor={handleUpdateVendor} onDeleteVendor={handleDeleteVendor} showNotification={showNotification} />;
       case AppView.Users:
         return <Users users={users} currentUser={currentUser} onCreateUser={handleCreateUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} showNotification={showNotification} />;
       case AppView.Contacts:
@@ -282,11 +362,11 @@ const App: React.FC = () => {
       case AppView.Repairs:
         return <Repairs repairs={repairs} contacts={contacts} currentUser={currentUser} onCreateRepair={handleCreateRepair} onUpdateRepair={handleUpdateRepair} onDeleteRepair={handleDeleteRepair} showNotification={showNotification} />;
       case AppView.Notifications:
-        return <Notifications contacts={contacts} handleAction={handleAction} />;
+        return <Notifications contacts={contacts} handleAction={handleAction} smsSettings={smsSettings} showNotification={showNotification} />;
       case AppView.Reports:
         return <Reports contacts={contacts} rentals={rentals} repairs={repairs} handleAction={handleAction} />;
       default:
-        return <Dashboard />;
+        return <Dashboard contacts={contacts} rentals={rentals} repairs={repairs} users={users} />;
     }
   };
 
