@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect } from 'react';
-import { AppView, User, Contact, Rental, Repair, SmsSettings } from './types';
+import { AppView, User, Contact, Rental, Repair, SmsSettings, InventoryItem } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Users from './components/Users';
@@ -8,11 +9,12 @@ import Contacts from './components/Contacts';
 import Settings from './components/Settings';
 import Rentals from './components/Rentals';
 import Repairs from './components/Repairs';
+import Inventory from './components/Inventory';
 import Preloader from './components/Preloader';
 import Login from './components/Login';
 import Notifications from './components/Notifications';
 import Reports from './components/Reports';
-import { loadUsers, saveUsers, loadCurrentUser, saveCurrentUser, clearCurrentUser, saveAppLogo, loadAppLogo, loadContacts, saveContacts, loadRentals, saveRentals, loadRepairs, saveRepairs, loadSmsSettings, saveSmsSettings, loadAdminKey, saveAdminKey, loadSplashLogo, saveSplashLogo } from './utils/storage';
+import { loadUsers, saveUsers, loadCurrentUser, saveCurrentUser, clearCurrentUser, saveAppLogo, loadAppLogo, loadContacts, saveContacts, loadRentals, saveRentals, loadRepairs, saveRepairs, loadSmsSettings, saveSmsSettings, loadAdminKey, saveAdminKey, loadSplashLogo, saveSplashLogo, loadInventory, saveInventory } from './utils/storage';
 import { getTodayDateString } from './utils/dates';
 import Spinner from './components/Spinner';
 import Notification from './components/Notification';
@@ -48,6 +50,7 @@ const App: React.FC = () => {
   const [contacts, setContacts] = useState<Contact[]>(loadContacts());
   const [rentals, setRentals] = useState<Rental[]>(loadRentals());
   const [repairs, setRepairs] = useState<Repair[]>(loadRepairs());
+  const [inventory, setInventory] = useState<InventoryItem[]>(loadInventory());
   const [appLogo, setAppLogo] = useState<string | null>(loadAppLogo());
   const [splashLogo, setSplashLogo] = useState<string | null>(loadSplashLogo());
   const [smsSettings, setSmsSettings] = useState<SmsSettings>(loadSmsSettings());
@@ -192,6 +195,24 @@ const App: React.FC = () => {
     saveRepairs(updatedRepairs);
   });
 
+    const handleCreateInventory = (newItem: Omit<InventoryItem, 'id'>) => handleAction(() => {
+        const updatedInventory = [{...newItem, id: Date.now()}, ...inventory];
+        setInventory(updatedInventory);
+        saveInventory(updatedInventory);
+    });
+
+    const handleUpdateInventory = (updatedItem: InventoryItem) => handleAction(() => {
+        const updatedInventory = inventory.map(i => i.id === updatedItem.id ? updatedItem : i);
+        setInventory(updatedInventory);
+        saveInventory(updatedInventory);
+    });
+
+    const handleDeleteInventory = (itemId: number) => handleAction(() => {
+        const updatedInventory = inventory.filter(i => i.id !== itemId);
+        setInventory(updatedInventory);
+        saveInventory(updatedInventory);
+    });
+
   const handleUpdateSmsSettings = (settings: SmsSettings) => handleAction(() => {
     setSmsSettings(settings);
     saveSmsSettings(settings);
@@ -211,9 +232,12 @@ const App: React.FC = () => {
     return <Login users={users} onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} adminKey={adminKey} splashLogo={splashLogo} />;
   }
 
+  const isAdmin = currentUser.role === 'Admin';
+
   const getViewName = (view: AppView): string => {
     switch (view) {
       case AppView.Dashboard: return 'Dashboard';
+      case AppView.Inventory: return 'Inventory Management';
       case AppView.Contacts: return 'Contacts';
       case AppView.Rentals: return 'Rentals';
       case AppView.Repairs: return 'Repairs';
@@ -226,13 +250,21 @@ const App: React.FC = () => {
   };
 
   const renderView = () => {
+    const adminOnlyViews = [AppView.Users, AppView.Settings, AppView.Notifications, AppView.Reports];
+    if (!isAdmin && adminOnlyViews.includes(currentView)) {
+        // If a non-admin tries to access an admin view, show dashboard instead
+        return <Dashboard />;
+    }
+
     switch (currentView) {
       case AppView.Dashboard:
         return <Dashboard />;
+      case AppView.Inventory:
+        return <Inventory inventory={inventory} currentUser={currentUser} onCreateItem={handleCreateInventory} onUpdateItem={handleUpdateInventory} onDeleteItem={handleDeleteInventory} showNotification={showNotification} />;
       case AppView.Users:
         return <Users users={users} currentUser={currentUser} onCreateUser={handleCreateUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} showNotification={showNotification} />;
       case AppView.Contacts:
-        return <Contacts contacts={contacts} onCreateContact={handleCreateContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} showNotification={showNotification} />;
+        return <Contacts contacts={contacts} currentUser={currentUser} onCreateContact={handleCreateContact} onUpdateContact={handleUpdateContact} onDeleteContact={handleDeleteContact} showNotification={showNotification} />;
       case AppView.Settings:
         return <Settings 
                     onUpdateLogo={handleUpdateLogo} 
@@ -246,9 +278,9 @@ const App: React.FC = () => {
                     showNotification={showNotification}
                 />;
       case AppView.Rentals:
-        return <Rentals rentals={rentals} contacts={contacts} onCreateRental={handleCreateRental} onUpdateRental={handleUpdateRental} onDeleteRental={handleDeleteRental} showNotification={showNotification} />;
+        return <Rentals rentals={rentals} contacts={contacts} currentUser={currentUser} onCreateRental={handleCreateRental} onUpdateRental={handleUpdateRental} onDeleteRental={handleDeleteRental} showNotification={showNotification} />;
       case AppView.Repairs:
-        return <Repairs repairs={repairs} contacts={contacts} onCreateRepair={handleCreateRepair} onUpdateRepair={handleUpdateRepair} onDeleteRepair={handleDeleteRepair} showNotification={showNotification} />;
+        return <Repairs repairs={repairs} contacts={contacts} currentUser={currentUser} onCreateRepair={handleCreateRepair} onUpdateRepair={handleUpdateRepair} onDeleteRepair={handleDeleteRepair} showNotification={showNotification} />;
       case AppView.Notifications:
         return <Notifications contacts={contacts} handleAction={handleAction} />;
       case AppView.Reports:
@@ -262,7 +294,7 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-white">
       {notification && <Notification message={notification} onClose={() => setNotification('')} />}
       {isActionLoading && <Spinner />}
-      <Sidebar currentView={currentView} setCurrentView={handleViewChange} onLogout={handleLogout} appLogo={appLogo} />
+      <Sidebar currentView={currentView} setCurrentView={handleViewChange} onLogout={handleLogout} appLogo={appLogo} currentUser={currentUser} />
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header viewName={getViewName(currentView)} user={currentUser} />
         <main className="flex-1 overflow-y-auto bg-gray-50">

@@ -1,27 +1,33 @@
 
 
 import React from 'react';
-import { AppView } from '../types';
-import { DashboardIcon, ContactsIcon, RentalsIcon, RepairsIcon, UsersIcon, SettingsIcon, LogoutIcon, NotificationsIcon, ReportsIcon } from './Icons';
+import { AppView, User } from '../types';
+import { DashboardIcon, ContactsIcon, RentalsIcon, RepairsIcon, UsersIcon, SettingsIcon, LogoutIcon, NotificationsIcon, ReportsIcon, InventoryIcon } from './Icons';
 
 interface SidebarProps {
   currentView: AppView;
   setCurrentView: (view: AppView) => void;
   onLogout: () => void;
   appLogo: string | null;
+  currentUser: User;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout, appLogo }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout, appLogo, currentUser }) => {
+  const isAdmin = currentUser.role === 'Admin';
+
   const navItems = [
-    { view: AppView.Dashboard, icon: DashboardIcon, label: 'Dashboard' },
-    { view: AppView.Contacts, icon: ContactsIcon, label: 'Contacts' },
-    { view: AppView.Rentals, icon: RentalsIcon, label: 'Rentals' },
-    { view: AppView.Repairs, icon: RepairsIcon, label: 'Repairs' },
-    { view: AppView.Notifications, icon: NotificationsIcon, label: 'Notifications' },
-    { view: AppView.Reports, icon: ReportsIcon, label: 'Reports' },
-    { view: AppView.Users, icon: UsersIcon, label: 'Users' },
-    { view: AppView.Settings, icon: SettingsIcon, label: 'Settings' },
+    { view: AppView.Dashboard, icon: DashboardIcon, label: 'Dashboard', adminOnly: false },
+    { view: AppView.Inventory, icon: InventoryIcon, label: 'Inventory', adminOnly: false },
+    { view: AppView.Contacts, icon: ContactsIcon, label: 'Contacts', adminOnly: false },
+    { view: AppView.Rentals, icon: RentalsIcon, label: 'Rentals', adminOnly: false },
+    { view: AppView.Repairs, icon: RepairsIcon, label: 'Repairs', adminOnly: false },
+    { view: AppView.Notifications, icon: NotificationsIcon, label: 'Notifications', adminOnly: true },
+    { view: AppView.Reports, icon: ReportsIcon, label: 'Reports', adminOnly: true },
+    { view: AppView.Users, icon: UsersIcon, label: 'Users', adminOnly: true },
+    { view: AppView.Settings, icon: SettingsIcon, label: 'Settings', adminOnly: true },
   ];
+
+  const visibleNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   return (
     <aside className="w-64 bg-brand-light text-brand-text flex flex-col border-r border-gray-200">
@@ -39,7 +45,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, onLogout
       </div>
       <nav className="flex-1 px-4 py-2">
         <ul>
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <li key={item.view}>
               <button
                 onClick={() => setCurrentView(item.view)}

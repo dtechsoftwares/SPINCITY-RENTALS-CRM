@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import { Contact, ContactPlans, HookupTypes } from '../types';
+import { Contact, ContactPlans, HookupTypes, User } from '../types';
 import { CloseIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
 
@@ -128,17 +128,19 @@ const emptyContactForm: Omit<Contact, 'id'> = {
 
 interface ContactsProps {
     contacts: Contact[];
+    currentUser: User;
     onCreateContact: (contact: Omit<Contact, 'id'>) => void;
     onUpdateContact: (contact: Contact) => void;
     onDeleteContact: (contactId: number) => void;
     showNotification: (message: string) => void;
 }
 
-const Contacts: React.FC<ContactsProps> = ({ contacts, onCreateContact, onUpdateContact, onDeleteContact, showNotification }) => {
+const Contacts: React.FC<ContactsProps> = ({ contacts, currentUser, onCreateContact, onUpdateContact, onDeleteContact, showNotification }) => {
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [viewingContact, setViewingContact] = useState<Contact | null>(null);
   const [formData, setFormData] = useState<Omit<Contact, 'id'>>(emptyContactForm);
+  const isAdmin = currentUser.role === 'Admin';
 
   useEffect(() => {
     if (editingContact) {
@@ -212,7 +214,7 @@ const Contacts: React.FC<ContactsProps> = ({ contacts, onCreateContact, onUpdate
                  <div className="flex space-x-4 text-gray-500">
                     <button onClick={() => setViewingContact(contact)} className="hover:text-brand-green">View</button>
                     <button onClick={() => openEditModal(contact)} className="hover:text-brand-green">Edit</button>
-                    <button onClick={() => handleDelete(contact.id)} className="text-red-500 hover:text-red-400">Delete</button>
+                    {isAdmin && <button onClick={() => handleDelete(contact.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                 </div>
               </li>
             ))}

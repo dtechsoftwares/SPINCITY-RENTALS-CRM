@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo } from 'react';
-import { Rental, Contact, RentalPlan, RentalPlans, MaintenanceOptions, RentalStatuses, MaintenanceOption, RentalStatus, DeliveryPaymentOptions, DeliveryPaymentOption } from '../types';
+import { Rental, Contact, RentalPlan, RentalPlans, MaintenanceOptions, RentalStatuses, MaintenanceOption, RentalStatus, DeliveryPaymentOptions, DeliveryPaymentOption, User } from '../types';
 import { CloseIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
 
@@ -94,16 +94,18 @@ const emptyRentalForm: Omit<Rental, 'id'> = {
 interface RentalsProps {
     rentals: Rental[];
     contacts: Contact[];
+    currentUser: User;
     onCreateRental: (rental: Omit<Rental, 'id'>) => void;
     onUpdateRental: (rental: Rental) => void;
     onDeleteRental: (rentalId: number) => void;
     showNotification: (message: string) => void;
 }
 
-const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, onCreateRental, onUpdateRental, onDeleteRental, showNotification }) => {
+const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, currentUser, onCreateRental, onUpdateRental, onDeleteRental, showNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRental, setEditingRental] = useState<Rental | null>(null);
     const [formData, setFormData] = useState<Omit<Rental, 'id'> & { contactId: number | string }>(emptyRentalForm);
+    const isAdmin = currentUser.role === 'Admin';
 
     const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
 
@@ -224,7 +226,7 @@ const Rentals: React.FC<RentalsProps> = ({ rentals, contacts, onCreateRental, on
                                 <td className="p-4 text-gray-500">
                                     <div className="flex space-x-4">
                                         <button onClick={() => handleOpenModal(rental)} className="hover:text-brand-green">Edit</button>
-                                        <button onClick={() => handleDelete(rental.id)} className="text-red-500 hover:text-red-400">Delete</button>
+                                        {isAdmin && <button onClick={() => handleDelete(rental.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                                     </div>
                                 </td>
                             </tr>

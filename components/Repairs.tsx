@@ -2,7 +2,7 @@
 
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { Repair, Contact, Appliances, UrgencyLevels, RepairStatuses, Appliance, UrgencyLevel, RepairStatus, IssueTypes, PreferredTimesOfDay, IssueType, PreferredTimeOfDay } from '../types';
+import { Repair, Contact, Appliances, UrgencyLevels, RepairStatuses, Appliance, UrgencyLevel, RepairStatus, IssueTypes, PreferredTimesOfDay, IssueType, PreferredTimeOfDay, User } from '../types';
 import { CloseIcon, PaperclipIcon } from './Icons';
 import { getTodayDateString } from '../utils/dates';
 
@@ -152,18 +152,20 @@ const emptyRepairForm: Omit<Repair, 'id'> = {
 interface RepairsProps {
     repairs: Repair[];
     contacts: Contact[];
+    currentUser: User;
     onCreateRepair: (repair: Omit<Repair, 'id'>) => void;
     onUpdateRepair: (repair: Repair) => void;
     onDeleteRepair: (repairId: number) => void;
     showNotification: (message: string) => void;
 }
 
-const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, onCreateRepair, onUpdateRepair, onDeleteRepair, showNotification }) => {
+const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, currentUser, onCreateRepair, onUpdateRepair, onDeleteRepair, showNotification }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingRepair, setEditingRepair] = useState<Repair | null>(null);
     const [viewingRepair, setViewingRepair] = useState<Repair | null>(null);
     const [formData, setFormData] = useState<Omit<Repair, 'id'> & { contactId: number | string }>(emptyRepairForm);
     const [isDragging, setIsDragging] = useState(false);
+    const isAdmin = currentUser.role === 'Admin';
 
     const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
 
@@ -320,7 +322,7 @@ const Repairs: React.FC<RepairsProps> = ({ repairs, contacts, onCreateRepair, on
                                     <div className="flex space-x-4 text-gray-500">
                                         <button onClick={() => setViewingRepair(repair)} className="hover:text-brand-green">View</button>
                                         <button onClick={() => handleOpenModal(repair)} className="hover:text-brand-green">Edit</button>
-                                        <button onClick={() => handleDelete(repair.id)} className="text-red-500 hover:text-red-400">Delete</button>
+                                        {isAdmin && <button onClick={() => handleDelete(repair.id)} className="text-red-500 hover:text-red-400">Delete</button>}
                                     </div>
                                 </td>
                             </tr>

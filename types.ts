@@ -2,6 +2,7 @@
 
 export enum AppView {
   Dashboard,
+  Inventory,
   Contacts,
   Rentals,
   Repairs,
@@ -159,4 +160,31 @@ export interface SmsSettings {
     domain: string;
     protocol: 'HTTPS' | 'HTTP';
     port: string;
+}
+
+// Inventory Types
+export const InventoryVendors = ['GE Appliances', 'Whirlpool Corp', 'Samsung Electronics', 'LG Electronics'] as const;
+export type InventoryVendor = typeof InventoryVendors[number];
+
+export const InventoryItemTypes = ['Washer', 'Dryer', 'Electric Stove', 'Refrigerator', 'Washer/Dryer Combo'] as const;
+export type InventoryItemType = typeof InventoryItemTypes[number];
+
+export const InventoryConditions = ['New', 'Used', 'Refurbished'] as const;
+export type InventoryCondition = typeof InventoryConditions[number];
+
+export const InventoryStatuses = ['Available', 'Rented', 'In Repair', 'Decommissioned'] as const;
+export type InventoryStatus = typeof InventoryStatuses[number];
+
+export interface InventoryItem {
+    id: number;
+    purchaseId: string;
+    purchaseDate: string; // YYYY-MM-DD
+    vendor: InventoryVendor;
+    itemType: InventoryItemType;
+    makeModel: string;
+    serialNumber: string;
+    condition: InventoryCondition;
+    purchaseCost: number;
+    status: InventoryStatus;
+    notes?: string;
 }
