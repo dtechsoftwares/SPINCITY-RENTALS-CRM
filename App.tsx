@@ -18,14 +18,6 @@ import * as db from './utils/storage';
 import { getTodayDateString } from './utils/dates';
 import Spinner from './components/Spinner';
 import Notification from './components/Notification';
-import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
-
-const DemoModeBanner = () => (
-    <div className="bg-yellow-100 border-b-2 border-yellow-300 text-yellow-800 p-3 text-center text-sm w-full">
-        <strong>Demo Mode:</strong> Firebase is not configured. All data is stored in your browser and will be lost if you clear your cache.
-        Update <code className="font-mono bg-yellow-200 p-1 rounded">utils/storage.ts</code> to connect to a database.
-    </div>
-);
 
 interface HeaderProps {
     viewName: string;
@@ -70,74 +62,39 @@ const App: React.FC = () => {
   
   const [notification, setNotification] = useState('');
 
+  // Initial load effect
   useEffect(() => {
-    const loadInitialData = async () => {
-      // Load settings first as they are needed for preloader/login
-      setSplashLogo(await db.loadSplashLogo());
-      setAdminKey(await db.loadAdminKey());
+    const loadAppData = () => {
+        try {
+            setAppLoading(true);
+            const loadedUsers = db.loadUsers();
+            setUsers(loadedUsers);
 
-      if (db.isFirebaseConfigured()) {
-        const auth = getAuth();
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-          try {
-            setIsActionLoading(true);
-            if (firebaseUser) {
-              const loadedUsers = await db.loadUsers();
-              setUsers(loadedUsers);
-              const appUser = loadedUsers.find(u => u.email.toLowerCase() === firebaseUser.email?.toLowerCase());
-              setCurrentUser(appUser || null);
-
-              if (appUser) {
-                setContacts(await db.loadContacts());
-                setRentals(await db.loadRentals());
-                setRepairs(await db.loadRepairs());
-                setInventory(await db.loadInventory());
-                setSales(await db.loadSales());
-                setVendors(await db.loadVendors());
-                setAppLogo(await db.loadAppLogo());
-                setSmsSettings(await db.loadSmsSettings());
-              }
-            } else {
-              setCurrentUser(null);
-              setUsers(await db.loadUsers()); // still load users for registration check
+            const currentUserId = db.getCurrentUserId();
+            const appUser = currentUserId ? loadedUsers.find(u => u.id === currentUserId) : null;
+            
+            if (appUser) {
+                setCurrentUser(appUser);
+                setContacts(db.loadContacts());
+                setRentals(db.loadRentals());
+                setRepairs(db.loadRepairs());
+                setInventory(db.loadInventory());
+                setSales(db.loadSales());
+                setVendors(db.loadVendors());
+                setAppLogo(db.loadAppLogo());
+                setSplashLogo(db.loadSplashLogo());
+                setSmsSettings(db.loadSmsSettings());
+                setAdminKey(db.loadAdminKey());
             }
-          } catch (error) {
-            console.error("Error during auth state change processing:", error instanceof Error ? error.message : String(error));
-            showNotification('Failed to load user data.');
-          } finally {
+        } catch (error) {
+            console.error("Error loading app data from localStorage:", error);
+            showNotification("Failed to load data. Your storage might be corrupted.");
+        } finally {
             setAppLoading(false);
-            setIsActionLoading(false);
-          }
-        });
-        return () => unsubscribe();
-      } else {
-        // Demo Mode: Load from localStorage
-        setIsActionLoading(true);
-        const loadedUsers = await db.loadUsers();
-        setUsers(loadedUsers);
-        const loggedInUser = await db.loadCurrentUser();
-        setCurrentUser(loggedInUser);
-
-        if (loggedInUser) {
-          setContacts(await db.loadContacts());
-          setRentals(await db.loadRentals());
-          setRepairs(await db.loadRepairs());
-          setInventory(await db.loadInventory());
-          setSales(await db.loadSales());
-          setVendors(await db.loadVendors());
-          setAppLogo(await db.loadAppLogo());
-          setSmsSettings(await db.loadSmsSettings());
         }
-        setAppLoading(false);
-        setIsActionLoading(false);
-      }
     };
-
-    loadInitialData().catch(error => {
-        console.error("Failed to load initial app data:", error instanceof Error ? error.message : String(error));
-        showNotification('A critical error occurred while loading the app.');
-        setAppLoading(false); // Ensure app doesn't hang on preloader
-    });
+    
+    loadAppData();
   }, []);
   
   const showNotification = (message: string) => {
@@ -161,200 +118,186 @@ const App: React.FC = () => {
 
   const handleViewChange = (view: AppView) => {
     if (view === currentView) return;
-    // Use the action handler to show spinner for view changes for better UX feedback.
     handleAction(() => {
         setCurrentView(view);
     });
   };
 
   const handleLogin = (user: User) => {
-    if (!db.isFirebaseConfigured()) {
-        handleAction(() => db.saveCurrentUser(user));
-    }
     setCurrentUser(user);
+    db.setCurrentUserId(user.id);
     handleViewChange(AppView.Dashboard);
     showNotification(`Welcome back, ${user.name}!`);
+    // Reload all data for the logged-in user
+    setContacts(db.loadContacts());
+    setRentals(db.loadRentals());
+    setRepairs(db.loadRepairs());
   };
 
-  // --- Internal Unwrapped Functions ---
-  const internalCreateUser = async (newUser: Omit<User, 'id'>) => {
-    const createdUser = await db.createUser(newUser);
-    setUsers(users => [...users, createdUser]);
-    return createdUser;
-  };
-  
-  const internalUpdateInventory = async (updatedItem: InventoryItem) => {
-    await db.updateInventory(updatedItem);
-    setInventory(inventory => inventory.map(i => i.id === updatedItem.id ? updatedItem : i));
+  const handleRegisterSuccess = (user: User) => {
+    setUsers([...users, user]);
+    handleLogin(user);
   };
 
-
-  // --- Wrapped Handlers for Components ---
-  const handleRegisterSuccess = (newUser: Omit<User, 'id'>) => handleAction(async () => {
-    const createdUser = await internalCreateUser(newUser);
-    if(createdUser) {
-        if (!db.isFirebaseConfigured()) {
-            await db.saveCurrentUser(createdUser);
-        }
-        setCurrentUser(createdUser);
-        handleViewChange(AppView.Dashboard);
-    }
-  });
-
-  const handleLogout = () => handleAction(async () => {
-    if (db.isFirebaseConfigured()) {
-        await signOut(getAuth());
-    } else {
-        await db.clearCurrentUser();
-    }
+  const handleLogout = () => handleAction(() => {
+    db.setCurrentUserId(null);
     setCurrentUser(null);
   });
   
-  const handleCreateUser = (newUser: Omit<User, 'id'>) => handleAction(async () => {
-    return await internalCreateUser(newUser);
+  // --- Data Handlers ---
+  const handleCreateUser = (newUser: Omit<User, 'id'>) => handleAction(() => {
+      const createdUser = db.createUser(newUser);
+      setUsers(users => [...users, createdUser]);
   });
   
-  const handleUpdateUser = (updatedUser: User) => handleAction(async () => {
-    await db.updateUser(updatedUser);
+  const handleUpdateUser = (updatedUser: User) => handleAction(() => {
+    db.updateUser(updatedUser);
     const updatedUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
     setUsers(updatedUsers);
     if (currentUser && currentUser.id === updatedUser.id) {
         setCurrentUser(updatedUser);
-        if (!db.isFirebaseConfigured()) {
-            await db.saveCurrentUser(updatedUser);
-        }
     }
   });
   
-  const handleDeleteUser = (userId: string) => handleAction(async () => {
-    await db.deleteUser(userId);
+  const handleDeleteUser = (userId: string) => handleAction(() => {
+    db.deleteUser(userId);
     setUsers(users.filter(u => u.id !== userId));
   });
 
-  const handleUpdateLogo = (logo: string | null) => handleAction(async () => {
-    await db.saveAppLogo(logo);
+  const handleUpdateLogo = (logo: string | null) => handleAction(() => {
+    db.saveAppLogo(logo);
     setAppLogo(logo);
   });
 
-  const handleUpdateSplashLogo = (logo: string | null) => handleAction(async () => {
-    await db.saveSplashLogo(logo);
+  const handleUpdateSplashLogo = (logo: string | null) => handleAction(() => {
+    db.saveSplashLogo(logo);
     setSplashLogo(logo);
   });
 
-  const handleCreateContact = (newContact: Omit<Contact, 'id'>) => handleAction(async () => {
-    const contactWithDate = { ...newContact, createdAt: getTodayDateString() };
-    const createdContact = await db.createContact(contactWithDate);
+  const handleCreateContact = (newContact: Omit<Contact, 'id'>) => handleAction(() => {
+    const createdContact = db.createContact(newContact);
     setContacts([createdContact, ...contacts]);
   });
   
-  const handleUpdateContact = (updatedContact: Contact) => handleAction(async () => {
-    await db.updateContact(updatedContact);
+  const handleUpdateContact = (updatedContact: Contact) => handleAction(() => {
+    db.updateContact(updatedContact);
     setContacts(contacts.map(c => c.id === updatedContact.id ? updatedContact : c));
   });
   
-  const handleDeleteContact = (contactId: string) => handleAction(async () => {
-    await db.deleteContact(contactId);
+  const handleDeleteContact = (contactId: string) => handleAction(() => {
+    db.deleteContact(contactId);
     setContacts(contacts.filter(c => c.id !== contactId));
   });
 
-  const handleCreateRental = (newRental: Omit<Rental, 'id'>) => handleAction(async () => {
-    const createdRental = await db.createRental(newRental);
+  const handleCreateRental = (newRental: Omit<Rental, 'id'>) => handleAction(() => {
+    const createdRental = db.createRental(newRental);
     setRentals([createdRental, ...rentals]);
   });
 
-  const handleUpdateRental = (updatedRental: Rental) => handleAction(async () => {
-    await db.updateRental(updatedRental);
+  const handleUpdateRental = (updatedRental: Rental) => handleAction(() => {
+    db.updateRental(updatedRental);
     setRentals(rentals.map(r => r.id === updatedRental.id ? updatedRental : r));
   });
 
-  const handleDeleteRental = (rentalId: string) => handleAction(async () => {
-    await db.deleteRental(rentalId);
+  const handleDeleteRental = (rentalId: string) => handleAction(() => {
+    db.deleteRental(rentalId);
     setRentals(rentals.filter(r => r.id !== rentalId));
   });
 
-  const handleCreateRepair = (newRepair: Omit<Repair, 'id'>) => handleAction(async () => {
-    const createdRepair = await db.createRepair(newRepair);
+  const handleCreateRepair = (newRepair: Omit<Repair, 'id'>) => handleAction(() => {
+    const createdRepair = db.createRepair(newRepair);
     setRepairs([createdRepair, ...repairs]);
   });
 
-  const handleUpdateRepair = (updatedRepair: Repair) => handleAction(async () => {
-    await db.updateRepair(updatedRepair);
+  const handleUpdateRepair = (updatedRepair: Repair) => handleAction(() => {
+    db.updateRepair(updatedRepair);
     setRepairs(repairs.map(r => r.id === updatedRepair.id ? updatedRepair : r));
   });
 
-  const handleDeleteRepair = (repairId: string) => handleAction(async () => {
-    await db.deleteRepair(repairId);
+  const handleDeleteRepair = (repairId: string) => handleAction(() => {
+    db.deleteRepair(repairId);
     setRepairs(repairs.filter(r => r.id !== repairId));
   });
 
-  const handleCreateInventory = (newItem: Omit<InventoryItem, 'id'>) => handleAction(async () => {
-    const createdItem = await db.createInventory(newItem);
+  const handleCreateInventory = (newItem: Omit<InventoryItem, 'id'>) => handleAction(() => {
+    const createdItem = db.createInventory(newItem);
     setInventory([createdItem, ...inventory]);
   });
 
-  const handleUpdateInventory = (updatedItem: InventoryItem) => handleAction(() => internalUpdateInventory(updatedItem));
+  const handleUpdateInventory = (updatedItem: InventoryItem) => handleAction(() => {
+    db.updateInventory(updatedItem);
+    setInventory(inventory => inventory.map(i => i.id === updatedItem.id ? updatedItem : i));
+  });
 
-  const handleDeleteInventory = (itemId: string) => handleAction(async () => {
-    await db.deleteInventory(itemId);
+  const handleDeleteInventory = (itemId: string) => handleAction(() => {
+    db.deleteInventory(itemId);
     setInventory(inventory.filter(i => i.id !== itemId));
   });
 
-  const handleCreateSale = (newSale: Omit<Sale, 'id'>) => handleAction(async () => {
-    const createdSale = await db.createSale(newSale);
+  const handleCreateSale = (newSale: Omit<Sale, 'id'>) => handleAction(() => {
+    const createdSale = db.createSale(newSale);
     setSales(sales => [createdSale, ...sales]);
     const soldItem = inventory.find(i => i.id === newSale.itemId);
     if(soldItem) {
-        await internalUpdateInventory({ ...soldItem, status: 'Sold' });
+        handleUpdateInventory({ ...soldItem, status: 'Sold' });
     }
   });
 
-  const handleUpdateSale = (updatedSale: Sale) => handleAction(async () => {
+  const handleUpdateSale = (updatedSale: Sale) => handleAction(() => {
     const originalSale = sales.find(s => s.id === updatedSale.id);
-    await db.updateSale(updatedSale);
+    db.updateSale(updatedSale);
     setSales(sales.map(s => s.id === updatedSale.id ? updatedSale : s));
 
     if (originalSale && originalSale.itemId !== updatedSale.itemId) {
         const oldItem = inventory.find(i => i.id === originalSale.itemId);
         const newItem = inventory.find(i => i.id === updatedSale.itemId);
-        if(oldItem) await internalUpdateInventory({ ...oldItem, status: 'Available' });
-        if(newItem) await internalUpdateInventory({ ...newItem, status: 'Sold' });
+        if(oldItem) handleUpdateInventory({ ...oldItem, status: 'Available' });
+        if(newItem) handleUpdateInventory({ ...newItem, status: 'Sold' });
     }
   });
 
-  const handleDeleteSale = (saleId: string) => handleAction(async () => {
+  const handleDeleteSale = (saleId: string) => handleAction(() => {
     const saleToDelete = sales.find(s => s.id === saleId);
-    await db.deleteSale(saleId);
+    db.deleteSale(saleId);
     setSales(sales.filter(s => s.id !== saleId));
     if(saleToDelete) {
         const item = inventory.find(i => i.id === saleToDelete.itemId);
-        if(item) await internalUpdateInventory({ ...item, status: 'Available' });
+        if(item) handleUpdateInventory({ ...item, status: 'Available' });
     }
   });
 
-  const handleCreateVendor = (newVendor: Omit<Vendor, 'id'>) => handleAction(async () => {
-    const createdVendor = await db.createVendor(newVendor);
+  const handleCreateVendor = (newVendor: Omit<Vendor, 'id'>) => handleAction(() => {
+    const createdVendor = db.createVendor(newVendor);
     setVendors([createdVendor, ...vendors]);
   });
 
-  const handleUpdateVendor = (updatedVendor: Vendor) => handleAction(async () => {
-    await db.updateVendor(updatedVendor);
+  const handleUpdateVendor = (updatedVendor: Vendor) => handleAction(() => {
+    db.updateVendor(updatedVendor);
     setVendors(vendors.map(v => v.id === updatedVendor.id ? updatedVendor : v));
   });
 
-  const handleDeleteVendor = (vendorId: string) => handleAction(async () => {
-    await db.deleteVendor(vendorId);
+  const handleDeleteVendor = (vendorId: string) => handleAction(() => {
+    db.deleteVendor(vendorId);
     setVendors(vendors.filter(v => v.id !== vendorId));
   });
 
-  const handleUpdateSmsSettings = (settings: SmsSettings) => handleAction(async () => {
-    await db.saveSmsSettings(settings);
+  const handleUpdateSmsSettings = (settings: SmsSettings) => handleAction(() => {
+    db.saveSmsSettings(settings);
     setSmsSettings(settings);
   });
   
-  const handleUpdateAdminKey = (key: string) => handleAction(async () => {
-    await db.saveAdminKey(key);
+  const handleUpdateAdminKey = (key: string) => handleAction(() => {
+    db.saveAdminKey(key);
     setAdminKey(key);
     showNotification('Admin Registration Key updated successfully!');
+  });
+  
+  const handleRestoreData = (jsonData: string) => handleAction(() => {
+      const result = db.restoreBackupData(jsonData);
+      showNotification(result.message);
+      if (result.success) {
+          setTimeout(() => window.location.reload(), 2000);
+      }
   });
 
   if (appLoading) {
@@ -362,7 +305,7 @@ const App: React.FC = () => {
   }
 
   if (!currentUser) {
-    return <Login users={users} onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} adminKey={adminKey} splashLogo={splashLogo} isFirebaseConfigured={db.isFirebaseConfigured()} />;
+    return <Login users={users} onLogin={handleLogin} onRegisterSuccess={handleRegisterSuccess} adminKey={adminKey} splashLogo={splashLogo} />;
   }
 
   const isAdmin = currentUser.role === 'Admin';
@@ -414,6 +357,7 @@ const App: React.FC = () => {
                     currentSplashLogo={splashLogo}
                     onUpdateSplashLogo={handleUpdateSplashLogo}
                     showNotification={showNotification}
+                    onRestoreData={handleRestoreData}
                 />;
       case AppView.Rentals:
         return <Rentals rentals={rentals} contacts={contacts} currentUser={currentUser} onCreateRental={handleCreateRental} onUpdateRental={handleUpdateRental} onDeleteRental={handleDeleteRental} showNotification={showNotification} adminKey={adminKey} />;
@@ -434,7 +378,6 @@ const App: React.FC = () => {
       {isActionLoading && <Spinner />}
       <Sidebar currentView={currentView} setCurrentView={handleViewChange} onLogout={handleLogout} appLogo={appLogo} currentUser={currentUser} />
       <div className="flex-1 flex flex-col overflow-hidden">
-        {!db.isFirebaseConfigured() && <DemoModeBanner />}
         <Header viewName={getViewName(currentView)} user={currentUser} />
         <main className="flex-1 overflow-y-auto bg-gray-50">
           {renderView()}

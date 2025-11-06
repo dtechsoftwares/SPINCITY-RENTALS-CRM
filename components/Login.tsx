@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { User } from '../types';
 import { CloseIcon } from './Icons';
 import { defaultLogoBase64 } from '../utils/assets';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import * as db from '../utils/storage';
 
 // FIX: Make children optional to resolve misleading "missing children" type error.
 const Modal = ({ isOpen, onClose, children, title }: { isOpen: boolean, onClose: () => void, children?: React.ReactNode, title: string }) => {
@@ -37,13 +37,12 @@ const Input = ({ label, type = 'text', name, value, onChange, required=false, pl
 interface LoginProps {
   users: User[];
   onLogin: (user: User) => void;
-  onRegisterSuccess: (user: Omit<User, 'id'>) => void;
+  onRegisterSuccess: (user: User) => void;
   adminKey: string;
   splashLogo: string | null;
-  isFirebaseConfigured: boolean;
 }
 
-const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminKey, splashLogo, isFirebaseConfigured }) => {
+const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminKey, splashLogo }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -62,34 +61,20 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
     setError('');
     setIsSubmitting(true);
     
-    if (isFirebaseConfigured) {
-        try {
-            const auth = getAuth();
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            const appUser = users.find(u => u.email.toLowerCase() === userCredential.user.email?.toLowerCase());
-            if (appUser) {
-                onLogin(appUser);
-            } else {
-                setError('Authentication successful, but could not find user profile.');
-            }
-        } catch (err: any) {
-            console.error("Firebase Login Error:", err);
-            setError(err.message || 'Invalid email or password.');
-        } finally {
-            setIsSubmitting(false);
-        }
+    // Simulate async operation
+    await new Promise(res => setTimeout(res, 300));
+
+    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    
+    // NOTE: This is a simple password check for a local-only app.
+    // Do not use this method if the app were to go online.
+    if (user && user.password === password) {
+        onLogin(user);
     } else {
-        // LocalStorage Auth
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-        setTimeout(() => { // simulate network delay
-            if (user) {
-                onLogin(user);
-            } else {
-                setError('Invalid email or password.');
-            }
-            setIsSubmitting(false);
-        }, 500);
+        setError('Invalid email or password.');
     }
+    
+    setIsSubmitting(false);
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -97,57 +82,43 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
     setRegError('');
     setIsSubmitting(true);
     
-     if (regPassword.length < 6) {
-        setRegError("Password should be at least 6 characters.");
+    await new Promise(res => setTimeout(res, 300));
+
+    if (regPassword.length < 4) {
+        setRegError("Password should be at least 4 characters.");
+        setIsSubmitting(false);
+        return;
+    }
+    
+    if (users.some(u => u.email.toLowerCase() === regEmail.toLowerCase())) {
+        setRegError("An account with this email already exists.");
         setIsSubmitting(false);
         return;
     }
 
     const isFirstUser = users.length === 0;
-    if (isFirstUser && regAdminKey !== adminKey) {
-        setRegError('Invalid Admin Key.');
-        setIsSubmitting(false);
-        return;
-    }
-
-    if (isFirebaseConfigured) {
-        try {
-            const auth = getAuth();
-            await createUserWithEmailAndPassword(auth, regEmail, regPassword);
-            const newUser: Omit<User, 'id'> = {
-                name: regName,
-                email: regEmail,
-                role: isFirstUser ? 'Admin' : 'User',
-                avatar: `https://picsum.photos/seed/${regName}/80/80`
-            };
-            onRegisterSuccess(newUser); 
-        } catch (err: any) {
-            console.error("Firebase Registration Error:", err);
-            if (err.code === 'auth/email-already-in-use') {
-                setRegError('This email is already registered.');
-            } else {
-                setRegError(`Registration failed: ${err.message || 'Please check your connection and try again.'}`);
-            }
-        } finally {
-            setIsSubmitting(false);
-        }
-    } else {
-        // LocalStorage Registration
-        if (users.find(u => u.email.toLowerCase() === regEmail.toLowerCase())) {
-            setRegError('This email is already registered.');
+    if (isFirstUser) {
+        if (regAdminKey.length < 4) {
+            setRegError('Admin Key must be at least 4 characters long.');
             setIsSubmitting(false);
             return;
         }
-        const newUser: Omit<User, 'id'> = {
-            name: regName,
-            email: regEmail,
-            password: regPassword,
-            role: isFirstUser ? 'Admin' : 'User',
-            avatar: `https://picsum.photos/seed/${regName}/80/80`
-        };
-        onRegisterSuccess(newUser);
-        setIsSubmitting(false);
+        db.saveAdminKey(regAdminKey); // Save the admin key on first registration
     }
+
+    const newUser: Omit<User, 'id'> = {
+        name: regName,
+        email: regEmail,
+        password: regPassword, // Storing password directly as this is an offline app
+        role: isFirstUser ? 'Admin' : 'User',
+        avatar: `https://picsum.photos/seed/${regName}/80/80`
+    };
+
+    const createdUser = db.createUser(newUser);
+    onRegisterSuccess(createdUser);
+
+    setIsSubmitting(false);
+    setIsRegisterModalOpen(false);
   };
   
   // If no users exist, show the admin creation screen instead of the login form
@@ -165,8 +136,8 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
           <form onSubmit={handleRegister} className="space-y-4">
             <Input label="Full Name" name="name" value={regName} onChange={(e) => setRegName(e.target.value)} required />
             <Input label="Email Address" type="email" name="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
-            <Input label="Password (min. 6 characters)" type="password" name="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
-            <Input label="Admin Key" type="password" name="adminKey" value={regAdminKey} onChange={(e) => setRegAdminKey(e.target.value)} required placeholder="Secret key from settings"/>
+            <Input label="Password (min. 4 characters)" type="password" name="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
+            <Input label="Set Admin Key" type="password" name="adminKey" value={regAdminKey} onChange={(e) => setRegAdminKey(e.target.value)} required placeholder="Create a secret key for admin actions"/>
             
             <button type="submit" disabled={isSubmitting} className="w-full bg-brand-green text-white font-bold py-3 rounded-lg hover:bg-brand-green-dark transition-colors disabled:bg-gray-400 mt-6">
               {isSubmitting ? 'Creating Account...' : 'Create Admin Account'}
@@ -212,7 +183,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
             </button>
           </form>
           <div className="text-center mt-6">
-            <button onClick={() => setIsRegisterModalOpen(true)} className="text-sm text-brand-green hover:underline">
+            <button onClick={() => setIsRegisterModalOpen(true)} className="text-sm text-brand-green hover:underline disabled:text-gray-400">
               New here? Register now
             </button>
           </div>
@@ -224,7 +195,7 @@ const Login: React.FC<LoginProps> = ({ users, onLogin, onRegisterSuccess, adminK
           <form onSubmit={handleRegister} className="space-y-4">
               <Input label="Full Name" name="name" value={regName} onChange={(e) => setRegName(e.target.value)} required />
               <Input label="Email Address" type="email" name="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} required />
-              <Input label="Password (min. 6 characters)" type="password" name="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
+              <Input label="Password (min. 4 characters)" type="password" name="password" value={regPassword} onChange={(e) => setRegPassword(e.target.value)} required />
               <div className="flex justify-end space-x-4 pt-2">
                 <button type="button" onClick={() => setIsRegisterModalOpen(false)} className="bg-gray-200 text-gray-700 font-bold py-2 px-6 rounded-lg hover:bg-gray-300">Cancel</button>
                 <button type="submit" disabled={isSubmitting} className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-green-dark disabled:bg-gray-400">

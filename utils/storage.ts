@@ -1,271 +1,166 @@
-import { getApps, initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, setDoc, addDoc, updateDoc, deleteDoc, query, where, writeBatch, getDoc, Firestore, enableIndexedDbPersistence } from 'firebase/firestore';
 import { User, Contact, Rental, Repair, SmsSettings, InventoryItem, Sale, Vendor } from '../types';
 import { getTodayDateString } from './dates';
 
-// IMPORTANT: Replace with your actual Firebase configuration
-export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "spincitycrm.firebaseapp.com",
-  projectId: "spincitycrm",
-  storageBucket: "spincitycrm.firebaseapp.com",
-  messagingSenderId: "589728984815",
-  appId: "1:589728984815:web:240625c48b39230a7c351a",
-  measurementId: "G-9SVNQ28PPL"
-};
-
-export const isFirebaseConfigured = (): boolean => {
-    return firebaseConfig.apiKey !== "YOUR_API_KEY" && firebaseConfig.projectId !== "YOUR_PROJECT_ID";
-}
-
-let db: Firestore;
-
-if (isFirebaseConfigured()) {
-    // Initialize Firebase safely to be idempotent
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-    db = getFirestore(app);
-    enableIndexedDbPersistence(db)
-      .catch((err) => {
-        if (err.code == 'failed-precondition') {
-          // Multiple tabs open, persistence can only be enabled in one tab at a time.
-          console.warn('Firestore persistence failed: Multiple tabs open.');
-        } else if (err.code == 'unimplemented') {
-          // The current browser does not support all of the features required to enable persistence
-          console.warn('Firestore persistence failed: Browser does not support it.');
-        }
-      });
-} else {
-    console.warn("Firebase is not configured. Running in Demo Mode. Please update firebaseConfig in utils/storage.ts");
-}
-
-
-// --- LOCAL STORAGE FALLBACK ---
-
-const localStorageKeys = {
-    users: 'crm_users',
-    contacts: 'crm_contacts',
-    rentals: 'crm_rentals',
-    repairs: 'crm_repairs',
-    inventory: 'crm_inventory',
-    sales: 'crm_sales',
-    vendors: 'crm_vendors',
-    settingsSms: 'crm_settings_sms',
-    settingsAdminKey: 'crm_settings_admin_key',
-    settingsAppLogo: 'crm_settings_app_logo',
-    settingsSplashLogo: 'crm_settings_splash_logo',
-    currentUser: 'crm_current_user',
-};
-
-const defaultUsers: Omit<User, 'id'>[] = [];
-
-const loadFromStorage = <T extends {id: string}>(key: string, defaultValue: T[] = [], seedData: Omit<T, 'id'>[] = []): T[] => {
+// --- LocalStorage Helper Functions ---
+const getFromStorage = <T>(key: string, defaultValue: T): T => {
     try {
-        const storedValue = localStorage.getItem(key);
-        if (storedValue) {
-            return JSON.parse(storedValue);
-        }
-        if (seedData.length > 0) {
-            const seeded = seedData.map((item, index) => ({ ...item, id: (Date.now() + index).toString() } as T));
-            localStorage.setItem(key, JSON.stringify(seeded));
-            return seeded;
-        }
-        return defaultValue;
+        const item = window.localStorage.getItem(key);
+        return item ? JSON.parse(item) : defaultValue;
     } catch (error) {
-        console.error(`Error loading ${key} from localStorage`, error);
+        console.warn(`Error reading localStorage key “${key}”:`, error);
         return defaultValue;
     }
 };
 
-const saveToStorage = <T>(key: string, data: T): void => {
+const saveToStorage = <T>(key: string, value: T): void => {
     try {
-        localStorage.setItem(key, JSON.stringify(data));
+        window.localStorage.setItem(key, JSON.stringify(value));
     } catch (error) {
-        console.error(`Error saving ${key} to localStorage`, error);
+        console.warn(`Error setting localStorage key “${key}”:`, error);
     }
 };
 
-
-// --- Collection References ---
-const usersCollection = () => collection(db, 'users');
-const contactsCollection = () => collection(db, 'contacts');
-const rentalsCollection = () => collection(db, 'rentals');
-const repairsCollection = () => collection(db, 'repairs');
-const inventoryCollection = () => collection(db, 'inventory');
-const salesCollection = () => collection(db, 'sales');
-const vendorsCollection = () => collection(db, 'vendors');
-const settingsCollection = () => collection(db, 'settings');
-
-
-// --- Generic Helper Functions ---
-const fetchData = async <T>(getCol: () => any, lsKey: string, seedData: any[] = []): Promise<T[]> => {
-    if (isFirebaseConfigured()) {
-        const col = getCol();
-        try {
-            const snapshot = await getDocs(col);
-            return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as T));
-        } catch (e) {
-            // Suppress the specific offline error, as it's expected when cache is empty.
-            if (!(e instanceof Error && e.message.includes('offline'))) {
-                console.error(`Failed to load ${col.path} from Firestore:`, e instanceof Error ? e.message : String(e));
-            }
-            return [];
-        }
-    } else {
-        return Promise.resolve(loadFromStorage(lsKey, [], seedData));
-    }
+// --- Generic Data Operations ---
+const fetchData = <T extends { id: string }>(key: string): T[] => {
+    const items = getFromStorage<T[]>(key, []);
+    // Simple reverse sort to mimic 'desc' order. Adjust if a real date field is needed.
+    return items.reverse();
 };
 
-const createData = async <T extends {id: string}>(getCol: () => any, lsKey: string, data: Omit<T, 'id'>): Promise<T> => {
-    if (isFirebaseConfigured()) {
-        const docRef = await addDoc(getCol(), data);
-        return { id: docRef.id, ...data } as T;
-    } else {
-        const items = loadFromStorage<T>(lsKey);
-        const newItem = { ...data, id: Date.now().toString() } as T;
-        saveToStorage(lsKey, [...items, newItem]);
-        return Promise.resolve(newItem);
-    }
+const createData = <T extends { id?: string }>(key: string, newData: Omit<T, 'id'>): T => {
+    const items = getFromStorage<any[]>(key, []);
+    const newItem = { ...newData, id: Date.now().toString() };
+    saveToStorage(key, [...items, newItem]);
+    return newItem as T;
 };
 
-const updateData = async <T extends {id: string}>(getCol: () => any, lsKey: string, data: T): Promise<void> => {
-    if (isFirebaseConfigured()) {
-        const col = getCol();
-        const docRef = doc(col, data.id);
-        const { id, ...dataToUpdate } = data;
-        await updateDoc(docRef, dataToUpdate);
-    } else {
-        const items = loadFromStorage<T>(lsKey);
-        const updatedItems = items.map(item => item.id === data.id ? data : item);
-        saveToStorage(lsKey, updatedItems);
-        return Promise.resolve();
-    }
+const updateData = <T extends { id: string }>(key: string, updatedItem: T): void => {
+    const items = getFromStorage<T[]>(key, []);
+    const updatedItems = items.map(item => item.id === updatedItem.id ? updatedItem : item);
+    saveToStorage(key, updatedItems);
 };
 
-const deleteData = async (getCol: () => any, lsKey: string, id: string): Promise<void> => {
-    if (isFirebaseConfigured()) {
-        const col = getCol();
-        const docRef = doc(col, id);
-        await deleteDoc(docRef);
-    } else {
-        const items = loadFromStorage<{id: string}>(lsKey);
-        const updatedItems = items.filter(item => item.id !== id);
-        saveToStorage(lsKey, updatedItems);
-        return Promise.resolve();
-    }
+const deleteData = (key: string, id: string): void => {
+    const items = getFromStorage<any[]>(key, []);
+    const filteredItems = items.filter(item => item.id !== id);
+    saveToStorage(key, filteredItems);
 };
 
 
 // --- Users ---
-export const loadUsers = (): Promise<User[]> => fetchData<User>(usersCollection, localStorageKeys.users, defaultUsers);
-export const createUser = (user: Omit<User, 'id'>) => createData<User>(usersCollection, localStorageKeys.users, user);
-export const updateUser = (user: User) => updateData<User>(usersCollection, localStorageKeys.users, user);
-export const deleteUser = (id: string) => deleteData(usersCollection, localStorageKeys.users, id);
+export const loadUsers = (): User[] => getFromStorage<User[]>('crm_users', []);
+export const saveUsers = (users: User[]): void => saveToStorage('crm_users', users);
+export const createUser = (user: Omit<User, 'id'>): User => createData<User>('crm_users', user);
+export const updateUser = (user: User): void => updateData<User>('crm_users', user);
+export const deleteUser = (id: string): void => deleteData('crm_users', id);
 
 // --- Contacts ---
-export const loadContacts = (): Promise<Contact[]> => fetchData<Contact>(contactsCollection, localStorageKeys.contacts);
-export const createContact = (contact: Omit<Contact, 'id'>) => createData<Contact>(contactsCollection, localStorageKeys.contacts, contact);
-export const updateContact = (contact: Contact) => updateData<Contact>(contactsCollection, localStorageKeys.contacts, contact);
-export const deleteContact = (id: string) => deleteData(contactsCollection, localStorageKeys.contacts, id);
+export const loadContacts = (): Contact[] => fetchData<Contact>('crm_contacts');
+export const createContact = (contact: Omit<Contact, 'id'>) => createData<Contact>('crm_contacts', { ...contact, createdAt: getTodayDateString() });
+export const updateContact = (contact: Contact) => updateData<Contact>('crm_contacts', contact);
+export const deleteContact = (id: string) => deleteData('crm_contacts', id);
 
 // --- Rentals ---
-export const loadRentals = (): Promise<Rental[]> => fetchData<Rental>(rentalsCollection, localStorageKeys.rentals);
-export const createRental = (rental: Omit<Rental, 'id'>) => createData<Rental>(rentalsCollection, localStorageKeys.rentals, rental);
-export const updateRental = (rental: Rental) => updateData<Rental>(rentalsCollection, localStorageKeys.rentals, rental);
-export const deleteRental = (id: string) => deleteData(rentalsCollection, localStorageKeys.rentals, id);
+export const loadRentals = (): Rental[] => fetchData<Rental>('crm_rentals');
+export const createRental = (rental: Omit<Rental, 'id'>) => createData<Rental>('crm_rentals', rental);
+export const updateRental = (rental: Rental) => updateData<Rental>('crm_rentals', rental);
+export const deleteRental = (id: string) => deleteData('crm_rentals', id);
 
 // --- Repairs ---
-export const loadRepairs = (): Promise<Repair[]> => fetchData<Repair>(repairsCollection, localStorageKeys.repairs);
-export const createRepair = (repair: Omit<Repair, 'id'>) => createData<Repair>(repairsCollection, localStorageKeys.repairs, repair);
-export const updateRepair = (repair: Repair) => updateData<Repair>(repairsCollection, localStorageKeys.repairs, repair);
-export const deleteRepair = (id: string) => deleteData(repairsCollection, localStorageKeys.repairs, id);
+export const loadRepairs = (): Repair[] => fetchData<Repair>('crm_repairs');
+export const createRepair = (repair: Omit<Repair, 'id'>) => createData<Repair>('crm_repairs', repair);
+export const updateRepair = (repair: Repair) => updateData<Repair>('crm_repairs', repair);
+export const deleteRepair = (id: string) => deleteData('crm_repairs', id);
 
 // --- Inventory ---
-export const loadInventory = (): Promise<InventoryItem[]> => fetchData<InventoryItem>(inventoryCollection, localStorageKeys.inventory);
-export const createInventory = (item: Omit<InventoryItem, 'id'>) => createData<InventoryItem>(inventoryCollection, localStorageKeys.inventory, item);
-export const updateInventory = (item: InventoryItem) => updateData<InventoryItem>(inventoryCollection, localStorageKeys.inventory, item);
-export const deleteInventory = (id: string) => deleteData(inventoryCollection, localStorageKeys.inventory, id);
+export const loadInventory = (): InventoryItem[] => fetchData<InventoryItem>('crm_inventory');
+export const createInventory = (item: Omit<InventoryItem, 'id'>) => createData<InventoryItem>('crm_inventory', item);
+export const updateInventory = (item: InventoryItem) => updateData<InventoryItem>('crm_inventory', item);
+export const deleteInventory = (id: string) => deleteData('crm_inventory', id);
 
 // --- Sales ---
-export const loadSales = (): Promise<Sale[]> => fetchData<Sale>(salesCollection, localStorageKeys.sales);
-export const createSale = (sale: Omit<Sale, 'id'>) => createData<Sale>(salesCollection, localStorageKeys.sales, sale);
-export const updateSale = (sale: Sale) => updateData<Sale>(salesCollection, localStorageKeys.sales, sale);
-export const deleteSale = (id: string) => deleteData(salesCollection, localStorageKeys.sales, id);
+export const loadSales = (): Sale[] => fetchData<Sale>('crm_sales');
+export const createSale = (sale: Omit<Sale, 'id'>) => createData<Sale>('crm_sales', sale);
+export const updateSale = (sale: Sale) => updateData<Sale>('crm_sales', sale);
+export const deleteSale = (id: string) => deleteData('crm_sales', id);
 
 // --- Vendors ---
-export const loadVendors = (): Promise<Vendor[]> => fetchData<Vendor>(vendorsCollection, localStorageKeys.vendors);
-export const createVendor = (vendor: Omit<Vendor, 'id'>) => createData<Vendor>(vendorsCollection, localStorageKeys.vendors, vendor);
-export const updateVendor = (vendor: Vendor) => updateData<Vendor>(vendorsCollection, localStorageKeys.vendors, vendor);
-export const deleteVendor = (id: string) => deleteData(vendorsCollection, localStorageKeys.vendors, id);
-
+export const loadVendors = (): Vendor[] => fetchData<Vendor>('crm_vendors');
+export const createVendor = (vendor: Omit<Vendor, 'id'>) => createData<Vendor>('crm_vendors', vendor);
+export const updateVendor = (vendor: Vendor) => updateData<Vendor>('crm_vendors', vendor);
+export const deleteVendor = (id: string) => deleteData('crm_vendors', id);
 
 // --- Settings ---
-const loadSetting = async <T>(docId: string, lsKey: string, defaultValue: T): Promise<T> => {
-    if (isFirebaseConfigured()) {
-        try {
-            const docRef = doc(settingsCollection(), docId);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                // Firestore returns the whole document, we need the value
-                return (docSnap.data() as { value: T }).value;
-            } else {
-                await setDoc(docRef, { value: defaultValue });
-                return defaultValue;
-            }
-        } catch (e) {
-            // Suppress the specific offline error, as it's expected on first offline load.
-            if (!(e instanceof Error && e.message.includes('offline'))) {
-                console.error(`Failed to load setting ${docId}:`, e instanceof Error ? e.message : String(e));
-            }
-            return defaultValue;
-        }
-    } else {
-        const stored = localStorage.getItem(lsKey);
-        return stored ? JSON.parse(stored) : defaultValue;
-    }
-};
-
-const saveSetting = async <T>(docId: string, lsKey: string, data: T): Promise<void> => {
-    if (isFirebaseConfigured()) {
-        try {
-            const docRef = doc(settingsCollection(), docId);
-            // Store data under a 'value' field to keep it consistent
-            await setDoc(docRef, { value: data }, { merge: true });
-        } catch (e) {
-            console.error(`Failed to save setting ${docId}:`, e instanceof Error ? e.message : String(e));
-        }
-    } else {
-        saveToStorage(lsKey, data);
-        return Promise.resolve();
-    }
-};
-
 const defaultSmsSettings: SmsSettings = {
     apiKey: 'ae124c42ccedc3deea464278c208c7aa2aaac458f1d09f1919b047140c76cb87',
     senderId: 'SpinCity',
     endpointUrl: 'https://api.smsonlinegh.com/v5/message/sms/send',
 };
 
-export const loadSmsSettings = (): Promise<SmsSettings> => loadSetting('sms', localStorageKeys.settingsSms, defaultSmsSettings);
-export const saveSmsSettings = (settings: SmsSettings): Promise<void> => saveSetting('sms', localStorageKeys.settingsSms, settings);
+export const loadSmsSettings = (): SmsSettings => getFromStorage('crm_smsSettings', defaultSmsSettings);
+export const saveSmsSettings = (settings: SmsSettings): void => saveToStorage('crm_smsSettings', settings);
 
-export const loadAdminKey = (): Promise<string> => loadSetting('adminKey', localStorageKeys.settingsAdminKey, 'admin');
-export const saveAdminKey = (key: string): Promise<void> => saveSetting('adminKey', localStorageKeys.settingsAdminKey, key);
+export const loadAdminKey = (): string => getFromStorage('crm_adminKey', 'admin');
+export const saveAdminKey = (key: string): void => saveToStorage('crm_adminKey', key);
 
-export const loadAppLogo = (): Promise<string | null> => loadSetting('appLogo', localStorageKeys.settingsAppLogo, null);
-export const saveAppLogo = (logo: string | null): Promise<void> => saveSetting('appLogo', localStorageKeys.settingsAppLogo, logo);
+export const loadAppLogo = (): string | null => getFromStorage('crm_appLogo', null);
+export const saveAppLogo = (logo: string | null): void => saveToStorage('crm_appLogo', logo);
 
-export const loadSplashLogo = (): Promise<string | null> => loadSetting('splashLogo', localStorageKeys.settingsSplashLogo, null);
-export const saveSplashLogo = (logo: string | null): Promise<void> => saveSetting('splashLogo', localStorageKeys.settingsSplashLogo, logo);
+export const loadSplashLogo = (): string | null => getFromStorage('crm_splashLogo', null);
+export const saveSplashLogo = (logo: string | null): void => saveToStorage('crm_splashLogo', logo);
 
-// --- Current User (localStorage only) ---
-export const saveCurrentUser = async (user: User): Promise<void> => {
-    if(!isFirebaseConfigured()) saveToStorage(localStorageKeys.currentUser, user);
+
+// --- Authentication ---
+export const getCurrentUserId = (): string | null => getFromStorage('crm_currentUserId', null);
+export const setCurrentUserId = (userId: string | null): void => saveToStorage('crm_currentUserId', userId);
+
+
+// --- Backup & Restore ---
+export const getBackupData = (): string => {
+    const data = {
+        users: loadUsers(),
+        contacts: loadContacts(),
+        rentals: loadRentals(),
+        repairs: loadRepairs(),
+        inventory: loadInventory(),
+        sales: loadSales(),
+        vendors: loadVendors(),
+        settings: {
+            sms: loadSmsSettings(),
+            adminKey: loadAdminKey(),
+            appLogo: loadAppLogo(),
+            splashLogo: loadSplashLogo(),
+        }
+    };
+    return JSON.stringify(data, null, 2);
 };
-export const loadCurrentUser = async (): Promise<User | null> => {
-    if(isFirebaseConfigured()) return null; // Handled by onAuthStateChanged
-    const stored = localStorage.getItem(localStorageKeys.currentUser);
-    return stored ? JSON.parse(stored) : null;
-};
-export const clearCurrentUser = async (): Promise<void> => {
-    if(!isFirebaseConfigured()) localStorage.removeItem(localStorageKeys.currentUser);
+
+export const restoreBackupData = (jsonData: string): { success: boolean, message: string } => {
+    try {
+        const data = JSON.parse(jsonData);
+
+        if (!data.users || !data.contacts || !data.settings) {
+            return { success: false, message: 'Invalid backup file structure.' };
+        }
+
+        saveToStorage('crm_users', data.users || []);
+        saveToStorage('crm_contacts', data.contacts || []);
+        saveToStorage('crm_rentals', data.rentals || []);
+        saveToStorage('crm_repairs', data.repairs || []);
+        saveToStorage('crm_inventory', data.inventory || []);
+        saveToStorage('crm_sales', data.sales || []);
+        saveToStorage('crm_vendors', data.vendors || []);
+        
+        if(data.settings) {
+            saveToStorage('crm_smsSettings', data.settings.sms || defaultSmsSettings);
+            saveToStorage('crm_adminKey', data.settings.adminKey || 'admin');
+            saveToStorage('crm_appLogo', data.settings.appLogo || null);
+            saveToStorage('crm_splashLogo', data.settings.splashLogo || null);
+        }
+
+        return { success: true, message: 'Data restored successfully! The application will now reload.' };
+    } catch (error) {
+        console.error("Restore error:", error);
+        return { success: false, message: 'Failed to parse backup file. Please ensure it is a valid JSON file.' };
+    }
 };

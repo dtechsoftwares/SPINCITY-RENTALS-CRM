@@ -1,7 +1,7 @@
-
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SmsSettings } from '../types';
+import * as db from '../utils/storage';
+import { CloseIcon } from './Icons';
 
 const InputField = ({ label, description, type = 'text', value, placeholder, name, onChange }: { label: string, description?: string, type?: string, value: string, placeholder?: string, name: string, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) => {
   const [show, setShow] = useState(false);
@@ -48,6 +48,39 @@ const ToggleSwitch = ({ label, description, enabled, setEnabled }: { label: stri
   </div>
 );
 
+const BackupInfoModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+    if (!isOpen) return null;
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white text-brand-text w-full max-w-lg rounded-xl shadow-2xl border border-gray-200">
+                <div className="flex justify-between items-center p-6 border-b border-gray-200">
+                    <h2 className="text-2xl font-bold">Cloud Backup Instructions</h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-brand-text"><CloseIcon /></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <p>To securely back up your data to a cloud service like Google Drive or via email, please follow these two simple steps:</p>
+                    <ol className="list-decimal list-inside space-y-2">
+                        <li>Click the <strong>"Backup to This Device"</strong> button to download the complete database file (`spincity_backup.json`) to your computer.</li>
+                        <li>
+                            Once downloaded, manually upload this file to your preferred service:
+                            <ul className="list-disc list-inside ml-4 mt-2">
+                                <li><strong>Email:</strong> Attach the file to a new email and send it to `spincityrentallc@gmail.com`.</li>
+                                <li><strong>Google Drive:</strong> Drag and drop the file into your Google Drive folder.</li>
+                            </ul>
+                        </li>
+                    </ol>
+                    <p className="font-semibold text-sm">This two-step process ensures your data remains secure and is never transmitted automatically.</p>
+                </div>
+                 <div className="flex justify-end p-6 bg-gray-50 rounded-b-xl">
+                    <button onClick={onClose} className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-green-dark">
+                        Got it
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 interface SettingsProps {
     onUpdateLogo: (logo: string | null) => void;
     currentLogo: string | null;
@@ -58,8 +91,8 @@ interface SettingsProps {
     currentSplashLogo: string | null;
     onUpdateSplashLogo: (logo: string | null) => void;
     showNotification: (message: string) => void;
+    onRestoreData: (jsonData: string) => void;
 }
-
 
 const Settings: React.FC<SettingsProps> = ({ 
     onUpdateLogo, 
@@ -70,7 +103,8 @@ const Settings: React.FC<SettingsProps> = ({
     onUpdateAdminKey,
     currentSplashLogo,
     onUpdateSplashLogo,
-    showNotification
+    showNotification,
+    onRestoreData
 }) => {
     const [smsEnabled, setSmsEnabled] = useState(true);
     const [emailEnabled, setEmailEnabled] = useState(true);
@@ -87,24 +121,19 @@ const Settings: React.FC<SettingsProps> = ({
     const [senderIds, setSenderIds] = useState<string[]>(smsSettings.senderId ? [smsSettings.senderId] : []);
     const [isSenderIdLoading, setIsSenderIdLoading] = useState(false);
     const [isTestingConnection, setIsTestingConnection] = useState(false);
-
-
-    useEffect(() => {
-        setLocalSmsSettings(smsSettings);
-    }, [smsSettings]);
     
-    useEffect(() => {
-        setLocalAdminKey(adminKey);
-    }, [adminKey]);
+    const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+    const restoreInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => setLocalSmsSettings(smsSettings), [smsSettings]);
+    useEffect(() => setLocalAdminKey(adminKey), [adminKey]);
 
     const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             const file = e.target.files[0];
             setLogoFile(file);
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setLogoPreview(reader.result as string);
-            };
+            reader.onloadend = () => setLogoPreview(reader.result as string);
             reader.readAsDataURL(file);
         }
     };
@@ -128,9 +157,7 @@ const Settings: React.FC<SettingsProps> = ({
             const file = e.target.files[0];
             setSplashLogoFile(file);
             const reader = new FileReader();
-            reader.onloadend = () => {
-                setSplashLogoPreview(reader.result as string);
-            };
+            reader.onloadend = () => setSplashLogoPreview(reader.result as string);
             reader.readAsDataURL(file);
         }
     };
@@ -147,70 +174,11 @@ const Settings: React.FC<SettingsProps> = ({
         showNotification('Splash screen logo has been reset to default.');
     };
 
-
     const handleSmsSettingsChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setLocalSmsSettings(prev => ({...prev, [name]: value}));
     };
     
-    const handleFetchSenderIds = async () => {
-        if (!localSmsSettings.apiKey) {
-            showNotification('Please enter your API Key first.');
-            return;
-        }
-        setIsSenderIdLoading(true);
-        try {
-            // This is a MOCK API call. The user needs to replace with the actual endpoint if available.
-            // The smsonlinegh.com docs do not clearly specify an endpoint for listing sender IDs.
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            const mockSenderIds = ['SpinCity', 'Support', 'Alerts']; // Mocked data
-            setSenderIds(mockSenderIds);
-            
-            // If current senderId is not in the new list, select the first one.
-            if (!mockSenderIds.includes(localSmsSettings.senderId)) {
-                setLocalSmsSettings(prev => ({ ...prev, senderId: mockSenderIds[0] || '' }));
-            }
-            showNotification('Sender IDs loaded successfully.');
-        } catch (error) {
-            console.error("Failed to fetch sender IDs", error);
-            showNotification('Failed to load Sender IDs.');
-        } finally {
-            setIsSenderIdLoading(false);
-        }
-    };
-
-    const handleTestConnection = async () => {
-        if (!localSmsSettings.apiKey) {
-            showNotification('Please enter an API Key to test the connection.');
-            return;
-        }
-        setIsTestingConnection(true);
-        try {
-            const response = await fetch('https://api.smsonlinegh.com/v5/report/balance', {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Accept': 'application/json',
-                    'Authorization': `key ${localSmsSettings.apiKey}`
-                }
-            });
-
-            const result = await response.json();
-            
-            if (response.ok && result.handshake?.id === 0) {
-                const balance = result.data?.balance || 'N/A';
-                showNotification(`Connection successful! Balance: ${balance} credits.`);
-            } else {
-                throw new Error(result.handshake?.label || 'Invalid API Key or connection failed.');
-            }
-        } catch (error: any) {
-            showNotification(`Connection failed: ${error.message}`);
-        } finally {
-            setIsTestingConnection(false);
-        }
-    };
-
-
     const handleSaveSmsSettings = () => {
         onUpdateSmsSettings(localSmsSettings);
         showNotification('SMS settings saved successfully!');
@@ -224,11 +192,62 @@ const Settings: React.FC<SettingsProps> = ({
         onUpdateAdminKey(localAdminKey);
     };
 
+    const handleBackup = () => {
+        const jsonData = db.getBackupData();
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        const date = new Date().toISOString().split('T')[0];
+        link.download = `spincity_backup_${date}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        showNotification('Backup file downloaded successfully.');
+    };
+
+    const handleRestoreClick = () => {
+        restoreInputRef.current?.click();
+    };
+
+    const handleRestoreFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (window.confirm("Are you sure you want to restore from this file? This will overwrite all current data.")) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const content = event.target?.result as string;
+                onRestoreData(content);
+            };
+            reader.readAsText(file);
+        }
+        // Reset file input to allow re-uploading the same file
+        e.target.value = ''; 
+    };
+
     return (
         <div className="p-8 text-brand-text">
             <h1 className="text-3xl font-bold mb-8">Settings</h1>
             
             <div className="space-y-12">
+                <section>
+                    <h2 className="text-2xl font-bold border-b border-gray-200 pb-2 mb-6">Data Management</h2>
+                    <div className="bg-gray-50 p-6 rounded-lg border border-gray-200 space-y-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-brand-text">Backup & Restore</h3>
+                            <p className="text-sm text-gray-500 mb-4">Save all your CRM data to a file, or restore it from a previous backup. It's recommended to back up daily.</p>
+                            <div className="flex flex-wrap gap-4">
+                                <button onClick={handleBackup} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Backup to This Device</button>
+                                <button onClick={handleRestoreClick} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 transition-colors">Restore from Device</button>
+                                <button onClick={() => setIsBackupModalOpen(true)} className="bg-gray-700 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-800 transition-colors">Backup to Cloud (Email/Drive)</button>
+                                <input type="file" ref={restoreInputRef} onChange={handleRestoreFileChange} accept=".json" className="hidden" />
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <section>
                     <h2 className="text-2xl font-bold border-b border-gray-200 pb-2 mb-6">Branding</h2>
                     <div className="flex items-center space-x-6 bg-gray-50 p-6 rounded-lg border border-gray-200">
@@ -242,12 +261,7 @@ const Settings: React.FC<SettingsProps> = ({
                          <div className="flex-grow">
                              <label className="block text-lg font-semibold text-brand-text mb-1">Application Logo</label>
                              <p className="text-sm text-gray-500 mb-3">Upload a new logo for the sidebar. Recommended size: 128x128px.</p>
-                             <input 
-                                 type="file" 
-                                 accept="image/*" 
-                                 onChange={handleLogoChange}
-                                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-lime-50 file:text-lime-700 hover:file:bg-lime-100"
-                             />
+                             <input type="file" accept="image/*" onChange={handleLogoChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-lime-50 file:text-lime-700 hover:file:bg-lime-100" />
                          </div>
                     </div>
                     <div className="flex justify-end space-x-4 mt-6">
@@ -271,12 +285,7 @@ const Settings: React.FC<SettingsProps> = ({
                          <div className="flex-grow">
                              <label className="block text-lg font-semibold text-brand-text mb-1">Splash Screen Logo</label>
                              <p className="text-sm text-gray-500 mb-3">Upload a new logo for the splash and login pages.</p>
-                             <input 
-                                 type="file" 
-                                 accept="image/*" 
-                                 onChange={handleSplashLogoChange}
-                                 className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-lime-50 file:text-lime-700 hover:file:bg-lime-100"
-                             />
+                             <input type="file" accept="image/*" onChange={handleSplashLogoChange} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-lime-50 file:text-lime-700 hover:file:bg-lime-100" />
                          </div>
                     </div>
                     <div className="flex justify-end space-x-4 mt-6">
@@ -290,45 +299,9 @@ const Settings: React.FC<SettingsProps> = ({
                 <section>
                     <h2 className="text-2xl font-bold border-b border-gray-200 pb-2 mb-6">SMS Gateway Configuration</h2>
                     <div className="space-y-6 bg-gray-50 p-6 rounded-lg border border-gray-200">
-                        <InputField 
-                            label="API Key" 
-                            description="Your API Key from smsonlinegh.com"
-                            type="password" 
-                            value={localSmsSettings.apiKey || ''} 
-                            onChange={handleSmsSettingsChange} 
-                            name="apiKey" />
-
-                        <div>
-                            <label className="block text-lg font-semibold text-brand-text mb-1">Sender ID</label>
-                            <p className="text-sm text-gray-500 mb-2">The name that appears as the sender (must be approved).</p>
-                            <div className="flex items-center space-x-2">
-                                <select 
-                                    name="senderId" 
-                                    value={localSmsSettings.senderId || ''} 
-                                    onChange={handleSmsSettingsChange}
-                                    className="w-full bg-white border border-gray-300 rounded-lg px-4 py-3 text-brand-text focus:outline-none focus:ring-2 focus:ring-brand-green"
-                                >
-                                    {senderIds.length === 0 && <option value="">Enter API Key to load IDs</option>}
-                                    {senderIds.map(id => <option key={id} value={id}>{id}</option>)}
-                                </select>
-                                <button onClick={handleFetchSenderIds} disabled={isSenderIdLoading} className="bg-gray-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-gray-700 disabled:bg-gray-400">
-                                    {isSenderIdLoading ? 'Loading...' : 'Load Sender IDs'}
-                                </button>
-                            </div>
-                        </div>
-
-                        <InputField 
-                            label="API Endpoint URL" 
-                            description="The full URL for the SMS send endpoint."
-                            value={localSmsSettings.endpointUrl || ''} 
-                            onChange={handleSmsSettingsChange} 
-                            name="endpointUrl" />
-                        
-                        <div className="pt-2">
-                             <button onClick={handleTestConnection} disabled={isTestingConnection} className="bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 disabled:bg-blue-300">
-                                {isTestingConnection ? 'Testing...' : 'Test Connection'}
-                            </button>
-                        </div>
+                        <InputField label="API Key" description="Your API Key from smsonlinegh.com" type="password" value={localSmsSettings.apiKey || ''} onChange={handleSmsSettingsChange} name="apiKey" />
+                        <InputField label="Sender ID" description="The name that appears as the sender (must be approved)." value={localSmsSettings.senderId || ''} onChange={handleSmsSettingsChange} name="senderId" />
+                        <InputField label="API Endpoint URL" description="The full URL for the SMS send endpoint." value={localSmsSettings.endpointUrl || ''} onChange={handleSmsSettingsChange} name="endpointUrl" />
                     </div>
                     <div className="flex justify-end mt-6">
                        <button onClick={handleSaveSmsSettings} className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-green-dark">
@@ -340,14 +313,7 @@ const Settings: React.FC<SettingsProps> = ({
                 <section>
                     <h2 className="text-2xl font-bold border-b border-gray-200 pb-2 mb-6">Security & Registration</h2>
                     <div className="space-y-4 bg-gray-50 p-6 rounded-lg border border-gray-200">
-                        <InputField 
-                            label="Admin Registration Key" 
-                            description="This key is required for the initial admin registration."
-                            type="password"
-                            value={localAdminKey}
-                            name="adminKey"
-                            onChange={(e) => setLocalAdminKey(e.target.value)}
-                        />
+                        <InputField label="Admin Registration Key" description="This key is required for the initial admin registration." type="password" value={localAdminKey} name="adminKey" onChange={(e) => setLocalAdminKey(e.target.value)} />
                     </div>
                     <div className="flex justify-end mt-6">
                         <button onClick={handleSaveAdminKey} className="bg-brand-green text-white font-bold py-2 px-6 rounded-lg hover:bg-brand-green-dark" disabled={localAdminKey === adminKey}>
@@ -359,21 +325,12 @@ const Settings: React.FC<SettingsProps> = ({
                 <section>
                     <h2 className="text-2xl font-bold border-b border-gray-200 pb-2 mb-6">Notifications</h2>
                     <div className="space-y-6">
-                        <ToggleSwitch
-                            label="SMS Notifications"
-                            description="Receive notifications via SMS for important events."
-                            enabled={smsEnabled}
-                            setEnabled={setSmsEnabled}
-                        />
-                        <ToggleSwitch
-                            label="Email Notifications"
-                            description="Receive notifications via email for summaries and alerts."
-                            enabled={emailEnabled}
-                            setEnabled={setEmailEnabled}
-                        />
+                        <ToggleSwitch label="SMS Notifications" description="Receive notifications via SMS for important events." enabled={smsEnabled} setEnabled={setSmsEnabled} />
+                        <ToggleSwitch label="Email Notifications" description="Receive notifications via email for summaries and alerts." enabled={emailEnabled} setEnabled={setEmailEnabled} />
                     </div>
                 </section>
             </div>
+            <BackupInfoModal isOpen={isBackupModalOpen} onClose={() => setIsBackupModalOpen(false)} />
         </div>
     );
 };
